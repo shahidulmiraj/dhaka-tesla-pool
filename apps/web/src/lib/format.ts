@@ -10,3 +10,8 @@ export const when = (iso: string) =>
     timeStyle: 'short',
     timeZone: 'Asia/Dhaka',
   }).format(new Date(iso));
+
+export const km = (metres: number) =>
+  new Intl.NumberFormat(locale(), { style: 'unit', unit: 'kilometer', maximumFractionDigits: 2 }).format(
+    metres / 1000,
+  );
