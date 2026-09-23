@@ -292,9 +292,50 @@ export class PoolsService {
         orderBy: { createdAt: 'asc' },
       });
       for (const m of members) {
-        await this.cascade(tx, m.id, 'IN_PROGRESS', { status: 'COMPLETED' });
+        const payment = await this.settle(tx, m);
+        await this.cascade(tx, m.id, 'IN_PROGRESS', {
+          status: 'COMPLETED',
+          paymentStatus: payment.status,
+        });
+        await this.events.record(tx, {
+          type: 'PAYMENT_SETTLED',
+          rideRequestId: m.id,
+          poolId,
+          actorUserId: driverId,
+          metadata: {
+            method: m.paymentMethod,
+            farePaisa: m.finalFarePaisa,
+            ...payment,
+          },
+        });
       }
     });
+  }
+
+  // Simulated payment. TeslaPay debits only if the wallet covers the fare
+  // (conditional update + CHECK >= 0); otherwise cash is due. Never blocks completion.
+  private async settle(tx: Tx, m: RideRequest) {
+    const fare = m.finalFarePaisa!;
+    if (m.paymentMethod === 'CASH') return { status: 'PAID' as const };
+    const debit = await tx.user.updateMany({
+      where: { id: m.passengerId, walletBalancePaisa: { gte: fare } },
+      data: { walletBalancePaisa: { decrement: fare } },
+    });
+    const { walletBalancePaisa: after } = await tx.user.findUniqueOrThrow({
+      where: { id: m.passengerId },
+    });
+    return debit.count === 1
+      ? {
+          status: 'PAID' as const,
+          walletBefore: after + fare,
+          walletAfter: after,
+        }
+      : {
+          status: 'PENDING' as const,
+          walletBefore: after,
+          walletAfter: after,
+          cashDue: true,
+        };
   }
 
   private async command(
