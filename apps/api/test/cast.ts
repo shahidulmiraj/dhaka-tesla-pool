@@ -115,3 +115,32 @@ export function requestRide(
       paymentMethod: trip.paymentMethod ?? 'CASH',
     });
 }
+
+export const goOnline = (app: INestApplication, driver: Actor, online = true) =>
+  api(app)
+    .patch('/api/v1/driver/status')
+    .set(auth(driver.token))
+    .send({ online });
+
+export const accept = (
+  app: INestApplication,
+  driver: Actor,
+  requestId: string,
+) =>
+  api(app)
+    .post('/api/v1/driver/pools')
+    .set(auth(driver.token))
+    .send({ requestId });
+
+export const poolAction = (
+  app: INestApplication,
+  driver: Actor,
+  poolId: string,
+  action: 'arrive' | 'start' | 'complete' | 'cancel',
+) =>
+  api(app)
+    .post(`/api/v1/driver/pools/${poolId}/${action}`)
+    .set(auth(driver.token));
+
+export const getRide = (app: INestApplication, who: Actor, rideId: string) =>
+  api(app).get(`/api/v1/rides/${rideId}`).set(auth(who.token));
