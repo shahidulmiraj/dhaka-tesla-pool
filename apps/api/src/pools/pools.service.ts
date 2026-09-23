@@ -75,6 +75,26 @@ export class PoolsService {
   }
 
   /**
+   * Trigger A: a passenger requests. Try joinable pools in the pickup zone,
+   * fullest first (vehicles leave sooner), and stop at the first join.
+   */
+  async autoJoin(tx: Tx, request: RideRequest) {
+    const candidates = await tx.pool.findMany({
+      where: {
+        pickupZoneId: request.pickupZoneId,
+        status: { in: JOINABLE_POOL_STATUSES },
+      },
+      orderBy: [{ seatsTaken: 'desc' }, { createdAt: 'asc' }],
+    });
+    for (const pool of candidates) {
+      if (pool.seatsTaken + request.seats > pool.capacity) continue; // cheap pre-filter; joinPool re-checks
+      if (await this.joinPool(tx, pool, request, null, 'AUTO_JOIN'))
+        return pool.id;
+    }
+    return null;
+  }
+
+  /**
    * Trigger B: the driver accepts a request. Creates the pool, joins the accepted
    * request, then sweeps other waiting requests in the zone through joinPool.
    */
