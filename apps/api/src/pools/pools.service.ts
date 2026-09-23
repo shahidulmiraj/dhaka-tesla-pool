@@ -181,24 +181,29 @@ export class PoolsService {
   }
 
   // Pull compatible waiting requests into a new pool, oldest first, until full.
-  // SKIP LOCKED: rows another transaction is joining right now are skipped rather
-  // than waited on, so two drivers sweeping the same zone cannot deadlock.
+  // One candidate at a time, FOR UPDATE SKIP LOCKED: a row another driver's sweep
+  // holds is skipped instead of waited on (no deadlock between two sweeps), and we
+  // never lock rows we will not take, so the other sweep can still fill its seats.
   private async sweep(tx: Tx, pool: Pool) {
-    const candidates = await tx.$queryRaw<
-      Pick<RideRequest, 'id' | 'seats' | 'dropoffZoneId'>[]
-    >`
-      SELECT id, seats, dropoff_zone_id AS "dropoffZoneId" FROM ride_requests
-      WHERE pickup_zone_id = ${pool.pickupZoneId} AND status = 'REQUESTED' AND pool_id IS NULL
-      ORDER BY created_at
-      FOR UPDATE SKIP LOCKED`;
-    for (const c of candidates) {
+    const tried: string[] = [];
+    for (;;) {
       const { seatsTaken } = await tx.pool.findUniqueOrThrow({
         where: { id: pool.id },
       });
-      if (seatsTaken >= pool.capacity) break;
-      if (c.seats <= pool.capacity - seatsTaken) {
-        await this.joinPool(tx, pool, c, null, 'SWEEP');
-      }
+      const free = pool.capacity - seatsTaken;
+      if (free <= 0) return;
+      const [next] = await tx.$queryRaw<
+        Pick<RideRequest, 'id' | 'seats' | 'dropoffZoneId'>[]
+      >`
+        SELECT id, seats, dropoff_zone_id AS "dropoffZoneId" FROM ride_requests
+        WHERE pickup_zone_id = ${pool.pickupZoneId} AND status = 'REQUESTED' AND pool_id IS NULL
+          AND seats <= ${free} AND id <> ALL(${tried}::uuid[])
+        ORDER BY created_at
+        LIMIT 1
+        FOR UPDATE SKIP LOCKED`;
+      if (!next) return;
+      tried.push(next.id);
+      await this.joinPool(tx, pool, next, null, 'SWEEP'); // false = incompatible destination
     }
   }
 
