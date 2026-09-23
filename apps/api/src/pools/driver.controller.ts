@@ -90,4 +90,13 @@ export class DriverController {
   ) {
     return this.pools.complete(user.sub, id);
   }
+
+  @Post('pools/:id/cancel')
+  @HttpCode(200)
+  cancel(
+    @CurrentUser() user: AuthUser,
+    @Param('id', ParseUUIDPipe) id: string,
+  ) {
+    return this.pools.cancel(user.sub, id);
+  }
 }

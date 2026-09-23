@@ -312,6 +312,88 @@ export class PoolsService {
     });
   }
 
+  // Driver cancel: members did nothing wrong, so they go back to REQUESTED and keep
+  // their queue position (created_at unchanged), immediately eligible for other pools.
+  cancel(driverId: string, poolId: string) {
+    return this.command(driverId, poolId, 'CANCELLED', async (tx) => {
+      const members = await tx.rideRequest.findMany({
+        where: { poolId },
+        orderBy: { createdAt: 'asc' },
+      });
+      for (const m of members) {
+        await this.cascade(tx, m.id, m.status, {
+          status: 'REQUESTED',
+          poolId: null,
+        });
+        await this.events.record(tx, {
+          type: 'RIDE_UNMATCHED',
+          rideRequestId: m.id,
+          poolId, // the old pool, so history explains the revert
+          from: m.status,
+          to: 'REQUESTED',
+          actorUserId: driverId,
+          metadata: { reason: 'POOL_CANCELLED_BY_DRIVER', seats: m.seats },
+        });
+      }
+    });
+  }
+
+  /**
+   * The ONLY writer that takes a request out of a pool (passenger cancel).
+   * Locks the pool first (conditional update, joinable only), then the member.
+   * Returns false if the pool has already started (caller answers 409).
+   * If the last member leaves, the system cancels the now-empty pool.
+   */
+  async leavePool(
+    tx: Tx,
+    ride: RideRequest,
+    passengerId: string,
+  ): Promise<boolean> {
+    const poolId = ride.poolId!;
+    const freed = await tx.pool.updateMany({
+      where: { id: poolId, status: { in: JOINABLE_POOL_STATUSES } },
+      data: { seatsTaken: { decrement: ride.seats } },
+    });
+    if (freed.count === 0) return false;
+
+    const current = await tx.rideRequest.findUniqueOrThrow({
+      where: { id: ride.id },
+    });
+    const left = await tx.rideRequest.updateMany({
+      where: {
+        id: ride.id,
+        poolId,
+        status: { in: ['MATCHED', 'DRIVER_ARRIVED'] },
+      },
+      data: { status: 'CANCELLED', poolId: null, cancelledBy: 'PASSENGER' },
+    });
+    if (left.count !== 1)
+      throw invalidTransition('Ride', current.status, 'CANCELLED');
+    await this.events.record(tx, {
+      type: 'RIDE_CANCELLED',
+      rideRequestId: ride.id,
+      poolId,
+      from: current.status,
+      to: 'CANCELLED',
+      actorUserId: passengerId,
+      metadata: { cancelledBy: 'PASSENGER', seatsFreed: ride.seats },
+    });
+
+    const pool = await tx.pool.findUniqueOrThrow({ where: { id: poolId } });
+    if (pool.seatsTaken === 0) {
+      const from = await this.move(tx, poolId, 'CANCELLED', {});
+      await this.events.record(tx, {
+        type: 'POOL_CANCELLED',
+        poolId,
+        from,
+        to: 'CANCELLED',
+        actorUserId: null,
+        metadata: { reason: 'EMPTY', cancelledBy: 'SYSTEM' },
+      });
+    }
+    return true;
+  }
+
   // Simulated payment. TeslaPay debits only if the wallet covers the fare
   // (conditional update + CHECK >= 0); otherwise cash is due. Never blocks completion.
   private async settle(tx: Tx, m: RideRequest) {
@@ -398,7 +480,10 @@ export class PoolsService {
     rideId: string,
     expected: RideRequest['status'],
     data: Partial<
-      Pick<RideRequest, 'status' | 'finalFarePaisa' | 'paymentStatus'>
+      Pick<
+        RideRequest,
+        'status' | 'finalFarePaisa' | 'paymentStatus' | 'poolId'
+      >
     >,
   ) {
     const res = await tx.rideRequest.updateMany({

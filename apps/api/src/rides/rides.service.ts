@@ -138,25 +138,38 @@ export class RidesService {
     return rideDetailView(ride, coPassengers, events);
   }
 
+  // REQUESTED: cancel in place. MATCHED / DRIVER_ARRIVED: leave the pool (seat
+  // freed, empty pool auto-cancelled). IN_PROGRESS and terminal: 409.
   async cancel(passengerId: string, rideId: string) {
     await this.prisma.$transaction(async (tx) => {
-      const ride = await this.ownRide(tx, passengerId, rideId);
-      if (ride.status !== 'REQUESTED')
-        throw invalidTransition('Ride', ride.status, 'CANCELLED');
-      const res = await tx.rideRequest.updateMany({
-        where: { id: ride.id, status: 'REQUESTED' },
-        data: { status: 'CANCELLED', cancelledBy: 'PASSENGER' },
-      });
-      if (res.count === 0)
-        throw invalidTransition('Ride', ride.status, 'CANCELLED');
-      await this.events.record(tx, {
-        type: 'RIDE_CANCELLED',
-        rideRequestId: ride.id,
-        from: 'REQUESTED',
-        to: 'CANCELLED',
-        actorUserId: passengerId,
-        metadata: { cancelledBy: 'PASSENGER' },
-      });
+      let ride = await this.ownRide(tx, passengerId, rideId);
+      if (ride.status === 'REQUESTED') {
+        const res = await tx.rideRequest.updateMany({
+          where: { id: ride.id, status: 'REQUESTED' },
+          data: { status: 'CANCELLED', cancelledBy: 'PASSENGER' },
+        });
+        if (res.count === 1) {
+          await this.events.record(tx, {
+            type: 'RIDE_CANCELLED',
+            rideRequestId: ride.id,
+            from: 'REQUESTED',
+            to: 'CANCELLED',
+            actorUserId: passengerId,
+            metadata: { cancelledBy: 'PASSENGER' },
+          });
+          return;
+        }
+        ride = await tx.rideRequest.findUniqueOrThrow({
+          where: { id: ride.id },
+        }); // matched meanwhile
+      }
+      if (ride.status === 'MATCHED' || ride.status === 'DRIVER_ARRIVED') {
+        if (await this.pools.leavePool(tx, ride, passengerId)) return;
+        ride = await tx.rideRequest.findUniqueOrThrow({
+          where: { id: ride.id },
+        }); // pool started meanwhile
+      }
+      throw invalidTransition('Ride', ride.status, 'CANCELLED');
     });
     return this.detail(passengerId, rideId);
   }
