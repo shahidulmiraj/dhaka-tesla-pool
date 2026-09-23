@@ -1,8 +1,18 @@
+'use client';
+
+import { useRouter } from 'next/navigation';
+import { useEffect } from 'react';
+import { CenteredSpinner } from '@/components/CenteredSpinner';
+import { homeFor, useHasToken, useMe } from '@/features/auth/useMe';
+
+// Root: send people where they belong.
 export default function Home() {
-  return (
-    <main className="mx-auto max-w-md p-8">
-      <h1 className="text-2xl font-semibold">Dhaka Tesla Pool</h1>
-      <p className="text-muted-foreground">Share a seat. Split the fare. Survive Dhaka traffic.</p>
-    </main>
-  );
+  const router = useRouter();
+  const hasToken = useHasToken();
+  const me = useMe(hasToken === true);
+  useEffect(() => {
+    if (hasToken === false || me.isError) router.replace('/login');
+    else if (me.data) router.replace(homeFor(me.data.role));
+  }, [hasToken, me.isError, me.data, router]);
+  return <CenteredSpinner />;
 }
