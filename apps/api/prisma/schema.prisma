@@ -1,0 +1,163 @@
+// CHECK constraints and partial unique indexes live in the hand-edited
+// init migration (Prisma cannot express them). Never run `prisma db push`.
+
+generator client {
+  provider      = "prisma-client-js"
+  binaryTargets = ["native", "linux-musl-openssl-3.0.x"]
+}
+
+datasource db {
+  provider  = "postgresql"
+  url       = env("DATABASE_URL") // Neon pooled in prod
+  directUrl = env("DIRECT_URL") // Neon direct for migrate
+}
+
+enum UserRole {
+  PASSENGER
+  DRIVER
+}
+
+enum RideStatus {
+  REQUESTED
+  MATCHED
+  DRIVER_ARRIVED
+  IN_PROGRESS
+  COMPLETED
+  CANCELLED
+}
+
+enum PoolStatus {
+  OPEN
+  DRIVER_ARRIVED
+  IN_PROGRESS
+  COMPLETED
+  CANCELLED
+}
+
+enum PaymentMethod {
+  CASH
+  TESLAPAY
+}
+
+enum PaymentStatus {
+  PAID
+  PENDING
+}
+
+enum CancelledBy {
+  PASSENGER
+  DRIVER
+  SYSTEM
+}
+
+model User {
+  id                 String        @id @default(uuid()) @db.Uuid
+  email              String        @unique
+  passwordHash       String        @map("password_hash")
+  fullName           String        @map("full_name")
+  role               UserRole
+  walletBalancePaisa Int           @default(0) @map("wallet_balance_paisa")
+  isOnline           Boolean       @default(false) @map("is_online")
+  createdAt          DateTime      @default(now()) @map("created_at") @db.Timestamptz
+  updatedAt          DateTime      @updatedAt @map("updated_at") @db.Timestamptz
+  vehicle            Vehicle?
+  rideRequests       RideRequest[]
+  pools              Pool[]
+  events             RideEvent[]   @relation("actor")
+
+  @@map("users")
+}
+
+model Vehicle {
+  id        String   @id @default(uuid()) @db.Uuid
+  driverId  String   @unique @map("driver_id") @db.Uuid
+  driver    User     @relation(fields: [driverId], references: [id])
+  name      String
+  capacity  Int      @db.SmallInt
+  createdAt DateTime @default(now()) @map("created_at") @db.Timestamptz
+  pools     Pool[]
+
+  @@map("vehicles")
+}
+
+model Zone {
+  id       Int           @id @default(autoincrement())
+  name     String        @unique
+  lat      Decimal       @db.Decimal(9, 6)
+  lng      Decimal       @db.Decimal(9, 6)
+  pickups  RideRequest[] @relation("pickup")
+  dropoffs RideRequest[] @relation("dropoff")
+  pools    Pool[]
+
+  @@map("zones")
+}
+
+model RideRequest {
+  id                 String         @id @default(uuid()) @db.Uuid
+  passengerId        String         @map("passenger_id") @db.Uuid
+  passenger          User           @relation(fields: [passengerId], references: [id])
+  pickupZoneId       Int            @map("pickup_zone_id")
+  pickupZone         Zone           @relation("pickup", fields: [pickupZoneId], references: [id], onDelete: Restrict)
+  dropoffZoneId      Int            @map("dropoff_zone_id")
+  dropoffZone        Zone           @relation("dropoff", fields: [dropoffZoneId], references: [id], onDelete: Restrict)
+  seats              Int            @db.SmallInt
+  distanceM          Int            @map("distance_m")
+  status             RideStatus     @default(REQUESTED)
+  poolId             String?        @map("pool_id") @db.Uuid
+  pool               Pool?          @relation(fields: [poolId], references: [id])
+  paymentMethod      PaymentMethod  @map("payment_method")
+  paymentStatus      PaymentStatus? @map("payment_status")
+  estimatedFarePaisa Int            @map("estimated_fare_paisa")
+  finalFarePaisa     Int?           @map("final_fare_paisa")
+  cancelledBy        CancelledBy?   @map("cancelled_by")
+  createdAt          DateTime       @default(now()) @map("created_at") @db.Timestamptz
+  updatedAt          DateTime       @updatedAt @map("updated_at") @db.Timestamptz
+  events             RideEvent[]
+
+  @@index([passengerId, createdAt(sort: Desc)])
+  @@index([poolId])
+  @@index([pickupZoneId, status])
+  @@map("ride_requests")
+}
+
+model Pool {
+  id           String        @id @default(uuid()) @db.Uuid
+  driverId     String        @map("driver_id") @db.Uuid
+  driver       User          @relation(fields: [driverId], references: [id])
+  vehicleId    String        @map("vehicle_id") @db.Uuid
+  vehicle      Vehicle       @relation(fields: [vehicleId], references: [id])
+  vehicleName  String        @map("vehicle_name")
+  capacity     Int           @db.SmallInt
+  seatsTaken   Int           @default(0) @map("seats_taken") @db.SmallInt
+  pickupZoneId Int           @map("pickup_zone_id")
+  pickupZone   Zone          @relation(fields: [pickupZoneId], references: [id], onDelete: Restrict)
+  status       PoolStatus    @default(OPEN)
+  createdAt    DateTime      @default(now()) @map("created_at") @db.Timestamptz
+  updatedAt    DateTime      @updatedAt @map("updated_at") @db.Timestamptz
+  members      RideRequest[]
+  events       RideEvent[]
+
+  @@index([driverId, createdAt(sort: Desc)])
+  @@index([pickupZoneId, status])
+  @@map("pools")
+}
+
+// Append-only audit trail. Int id (not BigInt) so it serialises to JSON as-is.
+model RideEvent {
+  id            Int          @id @default(autoincrement())
+  rideRequestId String?      @map("ride_request_id") @db.Uuid
+  rideRequest   RideRequest? @relation(fields: [rideRequestId], references: [id])
+  poolId        String?      @map("pool_id") @db.Uuid
+  pool          Pool?        @relation(fields: [poolId], references: [id])
+  eventType     String       @map("event_type")
+  fromStatus    String?      @map("from_status")
+  toStatus      String?      @map("to_status")
+  actorUserId   String?      @map("actor_user_id") @db.Uuid
+  actor         User?        @relation("actor", fields: [actorUserId], references: [id])
+  metadata      Json         @default("{}")
+  createdAt     DateTime     @default(now()) @map("created_at") @db.Timestamptz
+
+  @@index([rideRequestId, createdAt])
+  @@index([poolId, createdAt])
+  @@map("ride_events")
+}
