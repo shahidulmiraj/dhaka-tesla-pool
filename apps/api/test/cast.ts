@@ -1,6 +1,6 @@
 import { INestApplication } from '@nestjs/common';
 import { PrismaService } from '../src/prisma/prisma.service';
-import { api } from './app';
+import { api, auth, zoneId } from './app';
 
 // The PRD's cast, created through the real signup endpoint.
 export const PASSWORD = 'Dhaka2026!';
@@ -92,7 +92,26 @@ export async function signUp(
   return res.body as Actor;
 }
 
-export async function zone(app: INestApplication, name: string) {
-  const prisma = app.get(PrismaService);
-  return (await prisma.zone.findUniqueOrThrow({ where: { name } })).id;
+export interface TripInput {
+  from?: string;
+  to: string;
+  seats?: number;
+  paymentMethod?: 'CASH' | 'TESLAPAY';
+}
+
+// POST /rides as `who`; returns the supertest request so callers can chain .expect().
+export function requestRide(
+  app: INestApplication,
+  who: Actor,
+  trip: TripInput,
+) {
+  return api(app)
+    .post('/api/v1/rides')
+    .set(auth(who.token))
+    .send({
+      pickupZoneId: zoneId(trip.from ?? 'Banani'),
+      dropoffZoneId: zoneId(trip.to),
+      seats: trip.seats ?? 1,
+      paymentMethod: trip.paymentMethod ?? 'CASH',
+    });
 }
