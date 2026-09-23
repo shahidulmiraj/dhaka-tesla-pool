@@ -2,6 +2,7 @@ import {
   Body,
   Controller,
   Get,
+  HttpCode,
   Param,
   ParseUUIDPipe,
   Patch,
@@ -64,5 +65,29 @@ export class DriverController {
     @Param('id', ParseUUIDPipe) id: string,
   ) {
     return this.pools.detail(user.sub, id);
+  }
+
+  @Post('pools/:id/arrive')
+  @HttpCode(200)
+  arrive(
+    @CurrentUser() user: AuthUser,
+    @Param('id', ParseUUIDPipe) id: string,
+  ) {
+    return this.pools.arrive(user.sub, id);
+  }
+
+  @Post('pools/:id/start')
+  @HttpCode(200)
+  start(@CurrentUser() user: AuthUser, @Param('id', ParseUUIDPipe) id: string) {
+    return this.pools.start(user.sub, id);
+  }
+
+  @Post('pools/:id/complete')
+  @HttpCode(200)
+  complete(
+    @CurrentUser() user: AuthUser,
+    @Param('id', ParseUUIDPipe) id: string,
+  ) {
+    return this.pools.complete(user.sub, id);
   }
 }

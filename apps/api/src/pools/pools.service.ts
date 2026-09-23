@@ -1,7 +1,8 @@
 import { Injectable, Logger } from '@nestjs/common';
-import { Pool, RideRequest } from '@prisma/client';
+import { Pool, PoolStatus, RideRequest } from '@prisma/client';
 import { DomainError } from '../common/errors';
 import { EventsService } from '../events/events.service';
+import { finalFare, quote } from '../fare/fare';
 import { PageQueryDto } from '../rides/rides.dto';
 import { PrismaService, Tx } from '../prisma/prisma.service';
 import { zoneView } from '../zones/zones.service';
@@ -9,11 +10,20 @@ import { isDestinationCompatible } from './matching';
 import { poolDetailView, poolSummaryView } from './pools.view';
 import {
   ACTIVE_POOL_STATUSES,
+  invalidTransition,
   JOINABLE_POOL_STATUSES,
   MEMBER_STATUS_FOR_POOL,
+  poolSourcesOf,
 } from './transitions';
 
 export type JoinVia = 'ACCEPT' | 'SWEEP' | 'AUTO_JOIN';
+
+const POOL_EVENT = {
+  DRIVER_ARRIVED: 'POOL_DRIVER_ARRIVED',
+  IN_PROGRESS: 'POOL_STARTED',
+  COMPLETED: 'POOL_COMPLETED',
+  CANCELLED: 'POOL_CANCELLED',
+} as const satisfies Partial<Record<PoolStatus, string>>;
 
 @Injectable()
 export class PoolsService {
@@ -234,6 +244,128 @@ export class PoolsService {
       orderBy: { id: 'asc' },
     });
     return poolDetailView(pool, events);
+  }
+
+  // Driver commands. Each is one transaction: the pool's conditional update takes
+  // the row lock first, then member rows cascade. 0 rows -> 409, nothing else runs.
+  arrive(driverId: string, poolId: string) {
+    return this.command(driverId, poolId, 'DRIVER_ARRIVED', async (tx) => {
+      await tx.rideRequest.updateMany({
+        where: { poolId, status: 'MATCHED' },
+        data: { status: 'DRIVER_ARRIVED' },
+      });
+    });
+  }
+
+  // Fares lock here: membership is frozen from IN_PROGRESS, so the number is final.
+  start(driverId: string, poolId: string) {
+    return this.command(driverId, poolId, 'IN_PROGRESS', async (tx) => {
+      const members = await tx.rideRequest.findMany({
+        where: { poolId },
+        orderBy: { createdAt: 'asc' },
+      });
+      for (const m of members) {
+        const fare = finalFare(quote(m.distanceM, m.seats), members.length);
+        await this.cascade(tx, m.id, 'DRIVER_ARRIVED', {
+          status: 'IN_PROGRESS',
+          finalFarePaisa: fare,
+        });
+        await this.events.record(tx, {
+          type: 'FARE_LOCKED',
+          rideRequestId: m.id,
+          poolId,
+          actorUserId: driverId,
+          metadata: {
+            finalFarePaisa: fare,
+            members: members.length,
+            pooled: members.length >= 2,
+          },
+        });
+      }
+    });
+  }
+
+  complete(driverId: string, poolId: string) {
+    return this.command(driverId, poolId, 'COMPLETED', async (tx) => {
+      const members = await tx.rideRequest.findMany({
+        where: { poolId },
+        orderBy: { createdAt: 'asc' },
+      });
+      for (const m of members) {
+        await this.cascade(tx, m.id, 'IN_PROGRESS', { status: 'COMPLETED' });
+      }
+    });
+  }
+
+  private async command(
+    driverId: string,
+    poolId: string,
+    to: keyof typeof POOL_EVENT,
+    cascade: (tx: Tx) => Promise<void>,
+  ) {
+    await this.prisma.$transaction(async (tx) => {
+      const pool = await tx.pool.findUnique({ where: { id: poolId } });
+      if (!pool) throw new DomainError('NOT_FOUND', 'Pool not found');
+      if (pool.driverId !== driverId)
+        throw new DomainError('FORBIDDEN', 'This pool is not yours');
+      const from = await this.move(
+        tx,
+        poolId,
+        to,
+        to === 'CANCELLED' ? { seatsTaken: 0 } : {},
+      );
+      if (!from) {
+        const now = await tx.pool.findUniqueOrThrow({ where: { id: poolId } });
+        throw invalidTransition('Pool', now.status, to);
+      }
+      await this.events.record(tx, {
+        type: POOL_EVENT[to],
+        poolId,
+        from,
+        to,
+        actorUserId: driverId,
+        metadata:
+          to === 'CANCELLED' ? { reason: 'DRIVER', cancelledBy: 'DRIVER' } : {},
+      });
+      await cascade(tx);
+    });
+    return this.detail(driverId, poolId);
+  }
+
+  // Conditional update from each allowed source status in turn; returns the
+  // status actually moved from, or null if the state machine says no.
+  private async move(
+    tx: Tx,
+    poolId: string,
+    to: PoolStatus,
+    extra: { seatsTaken?: number },
+  ) {
+    for (const from of poolSourcesOf(to)) {
+      const res = await tx.pool.updateMany({
+        where: { id: poolId, status: from },
+        data: { status: to, ...extra },
+      });
+      if (res.count === 1) return from;
+    }
+    return null;
+  }
+
+  // A member row that is not in the expected status means the invariants broke:
+  // throw so the whole transaction rolls back rather than half-cascading.
+  private async cascade(
+    tx: Tx,
+    rideId: string,
+    expected: RideRequest['status'],
+    data: Partial<
+      Pick<RideRequest, 'status' | 'finalFarePaisa' | 'paymentStatus'>
+    >,
+  ) {
+    const res = await tx.rideRequest.updateMany({
+      where: { id: rideId, status: expected },
+      data,
+    });
+    if (res.count !== 1)
+      throw new Error(`Member ${rideId} was not ${expected}`);
   }
 
   /**
