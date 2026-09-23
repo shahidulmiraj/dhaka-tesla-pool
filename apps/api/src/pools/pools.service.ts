@@ -2,9 +2,11 @@ import { Injectable, Logger } from '@nestjs/common';
 import { Pool, RideRequest } from '@prisma/client';
 import { DomainError } from '../common/errors';
 import { EventsService } from '../events/events.service';
+import { PageQueryDto } from '../rides/rides.dto';
 import { PrismaService, Tx } from '../prisma/prisma.service';
 import { zoneView } from '../zones/zones.service';
 import { isDestinationCompatible } from './matching';
+import { poolDetailView, poolSummaryView } from './pools.view';
 import {
   ACTIVE_POOL_STATUSES,
   JOINABLE_POOL_STATUSES,
@@ -70,6 +72,148 @@ export class PoolsService {
       seats: r.seats,
       createdAt: r.createdAt,
     }));
+  }
+
+  /**
+   * Trigger B: the driver accepts a request. Creates the pool, joins the accepted
+   * request, then sweeps other waiting requests in the zone through joinPool.
+   */
+  async accept(driverId: string, requestId: string) {
+    const poolId = await this.prisma.$transaction(async (tx) => {
+      const driver = await tx.user.findUniqueOrThrow({
+        where: { id: driverId },
+        include: { vehicle: true },
+      });
+      if (!driver.vehicle)
+        throw new DomainError(
+          'NO_VEHICLE',
+          'Register a vehicle before accepting rides',
+        );
+      if (!driver.isOnline)
+        throw new DomainError('DRIVER_OFFLINE', 'Go online to accept requests');
+      const active = await tx.pool.findFirst({
+        where: { driverId, status: { in: ACTIVE_POOL_STATUSES } },
+      });
+      if (active)
+        throw new DomainError(
+          'DRIVER_HAS_ACTIVE_POOL',
+          'You already have an active pool',
+        );
+
+      const request = await tx.rideRequest.findUnique({
+        where: { id: requestId },
+      });
+      if (!request || request.status !== 'REQUESTED') {
+        throw new DomainError(
+          'REQUEST_NOT_AVAILABLE',
+          'This request is no longer waiting for a driver',
+        );
+      }
+      if (request.seats > driver.vehicle.capacity) {
+        throw new DomainError(
+          'SEATS_EXCEED_CAPACITY',
+          `${request.seats} seats requested; ${driver.vehicle.name} has ${driver.vehicle.capacity}`,
+        );
+      }
+
+      // Partial unique index pools_one_active_per_driver backs the check above.
+      const pool = await tx.pool.create({
+        data: {
+          driverId,
+          vehicleId: driver.vehicle.id,
+          vehicleName: driver.vehicle.name,
+          capacity: driver.vehicle.capacity,
+          pickupZoneId: request.pickupZoneId,
+        },
+      });
+      await this.events.record(tx, {
+        type: 'POOL_CREATED',
+        poolId: pool.id,
+        to: 'OPEN',
+        actorUserId: driverId,
+        metadata: {
+          capacity: pool.capacity,
+          vehicleName: pool.vehicleName,
+          acceptedRequestId: request.id,
+        },
+      });
+      if (!(await this.joinPool(tx, pool, request, driverId, 'ACCEPT'))) {
+        // Someone cancelled or took it a moment ago: roll back, no orphan pool.
+        throw new DomainError(
+          'REQUEST_NOT_AVAILABLE',
+          'This request is no longer waiting for a driver',
+        );
+      }
+      await this.sweep(tx, pool);
+      return pool.id;
+    });
+    return this.detail(driverId, poolId);
+  }
+
+  // Pull compatible waiting requests into a new pool, oldest first, until full.
+  // SKIP LOCKED: rows another transaction is joining right now are skipped rather
+  // than waited on, so two drivers sweeping the same zone cannot deadlock.
+  private async sweep(tx: Tx, pool: Pool) {
+    const candidates = await tx.$queryRaw<
+      Pick<RideRequest, 'id' | 'seats' | 'dropoffZoneId'>[]
+    >`
+      SELECT id, seats, dropoff_zone_id AS "dropoffZoneId" FROM ride_requests
+      WHERE pickup_zone_id = ${pool.pickupZoneId} AND status = 'REQUESTED' AND pool_id IS NULL
+      ORDER BY created_at
+      FOR UPDATE SKIP LOCKED`;
+    for (const c of candidates) {
+      const { seatsTaken } = await tx.pool.findUniqueOrThrow({
+        where: { id: pool.id },
+      });
+      if (seatsTaken >= pool.capacity) break;
+      if (c.seats <= pool.capacity - seatsTaken) {
+        await this.joinPool(tx, pool, c, null, 'SWEEP');
+      }
+    }
+  }
+
+  async list(driverId: string, page: PageQueryDto) {
+    const where = { driverId };
+    const [items, total] = await Promise.all([
+      this.prisma.pool.findMany({
+        where,
+        include: { pickupZone: true, _count: { select: { members: true } } },
+        orderBy: { createdAt: 'desc' },
+        take: page.limit,
+        skip: page.offset,
+      }),
+      this.prisma.pool.count({ where }),
+    ]);
+    return { items: items.map(poolSummaryView), total };
+  }
+
+  async active(driverId: string) {
+    const pool = await this.prisma.pool.findFirst({
+      where: { driverId, status: { in: ACTIVE_POOL_STATUSES } },
+      select: { id: true },
+    });
+    return pool ? this.detail(driverId, pool.id) : null;
+  }
+
+  async detail(driverId: string, poolId: string) {
+    const pool = await this.prisma.pool.findUnique({
+      where: { id: poolId },
+      include: {
+        pickupZone: true,
+        members: {
+          include: { passenger: true, dropoffZone: true },
+          orderBy: { createdAt: 'asc' },
+        },
+      },
+    });
+    if (!pool) throw new DomainError('NOT_FOUND', 'Pool not found');
+    if (pool.driverId !== driverId)
+      throw new DomainError('FORBIDDEN', 'This pool is not yours');
+    const events = await this.prisma.rideEvent.findMany({
+      where: { poolId },
+      orderBy: { id: 'asc' },
+    });
+    return poolDetailView(pool, events);
   }
 
   /**
