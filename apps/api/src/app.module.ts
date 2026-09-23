@@ -7,6 +7,7 @@ import { AuthModule } from './auth/auth.module';
 import { validateEnv } from './common/env';
 import { HealthController } from './health/health.controller';
 import { PrismaModule } from './prisma/prisma.module';
+import { ZonesModule } from './zones/zones.module';
 
 @Module({
   imports: [
@@ -31,6 +32,7 @@ import { PrismaModule } from './prisma/prisma.module';
     }),
     PrismaModule,
     AuthModule,
+    ZonesModule,
   ],
   controllers: [HealthController],
   providers: [{ provide: APP_GUARD, useClass: ThrottlerGuard }],
