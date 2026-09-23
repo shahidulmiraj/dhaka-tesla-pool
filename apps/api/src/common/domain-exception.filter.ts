@@ -72,7 +72,7 @@ export class DomainExceptionFilter implements ExceptionFilter {
       const body = ex.getResponse();
       const msg =
         typeof body === 'object' && body && 'message' in body
-          ? (body as { message: unknown }).message
+          ? body.message
           : ex.message;
       return new DomainError(
         code,
