@@ -1,6 +1,7 @@
 import { Injectable } from '@nestjs/common';
 import { DomainError } from '../common/errors';
 import { EventsService } from '../events/events.service';
+import { PoolsService } from '../pools/pools.service';
 import { ACTIVE_RIDE_STATUSES, invalidTransition } from '../pools/transitions';
 import { PrismaService, Tx } from '../prisma/prisma.service';
 import { ZonesService } from '../zones/zones.service';
@@ -19,6 +20,7 @@ export class RidesService {
     private readonly prisma: PrismaService,
     private readonly zones: ZonesService,
     private readonly events: EventsService,
+    private readonly pools: PoolsService,
   ) {}
 
   async create(passengerId: string, dto: CreateRideDto) {
@@ -52,6 +54,8 @@ export class RidesService {
           estimatedFarePaisa: quote.solo,
         },
       });
+      // No compatible pool with room: stays REQUESTED and waits for a driver.
+      await this.pools.autoJoin(tx, ride);
       return ride.id;
     });
     return this.detail(passengerId, rideId);
@@ -94,46 +98,78 @@ export class RidesService {
           where: { poolId: ride.poolId, id: { not: ride.id } },
         })
       : 0;
-    // Own events, plus pool-level events (no ride id) of every pool this ride was ever in.
+    // Own events, plus pool-level events (no ride id) from each pool this ride was
+    // in, limited to the window it was a member (matched .. unmatched/cancelled).
     // Other members' events are excluded: a passenger never learns about co-passengers.
-    const poolIds = (
-      await this.prisma.rideEvent.findMany({
-        where: { rideRequestId: ride.id, poolId: { not: null } },
-        select: { poolId: true },
-        distinct: ['poolId'],
-      })
-    ).map((e) => e.poolId!);
-    const events = await this.prisma.rideEvent.findMany({
-      where: {
-        OR: [
-          { rideRequestId: ride.id },
-          { poolId: { in: poolIds }, rideRequestId: null },
-        ],
-      },
+    const own = await this.prisma.rideEvent.findMany({
+      where: { rideRequestId: ride.id },
       orderBy: { id: 'asc' },
     });
+    const windows = own
+      .filter((e) => e.eventType === 'RIDE_MATCHED' && e.poolId)
+      .map((m) => ({
+        poolId: m.poolId!,
+        from: m.id,
+        to:
+          own.find(
+            (e) =>
+              e.id > m.id &&
+              e.poolId === m.poolId &&
+              (e.eventType === 'RIDE_UNMATCHED' ||
+                e.eventType === 'RIDE_CANCELLED'),
+          )?.id ?? Infinity,
+      }));
+    const poolEvents = windows.length
+      ? await this.prisma.rideEvent.findMany({
+          where: {
+            poolId: { in: windows.map((w) => w.poolId) },
+            rideRequestId: null,
+          },
+        })
+      : [];
+    const events = [
+      ...own,
+      ...poolEvents.filter((e) =>
+        windows.some(
+          (w) => w.poolId === e.poolId && e.id > w.from && e.id <= w.to,
+        ),
+      ),
+    ].sort((a, b) => a.id - b.id);
     return rideDetailView(ride, coPassengers, events);
   }
 
+  // REQUESTED: cancel in place. MATCHED / DRIVER_ARRIVED: leave the pool (seat
+  // freed, empty pool auto-cancelled). IN_PROGRESS and terminal: 409.
   async cancel(passengerId: string, rideId: string) {
     await this.prisma.$transaction(async (tx) => {
-      const ride = await this.ownRide(tx, passengerId, rideId);
-      if (ride.status !== 'REQUESTED')
-        throw invalidTransition('Ride', ride.status, 'CANCELLED');
-      const res = await tx.rideRequest.updateMany({
-        where: { id: ride.id, status: 'REQUESTED' },
-        data: { status: 'CANCELLED', cancelledBy: 'PASSENGER' },
-      });
-      if (res.count === 0)
-        throw invalidTransition('Ride', ride.status, 'CANCELLED');
-      await this.events.record(tx, {
-        type: 'RIDE_CANCELLED',
-        rideRequestId: ride.id,
-        from: 'REQUESTED',
-        to: 'CANCELLED',
-        actorUserId: passengerId,
-        metadata: { cancelledBy: 'PASSENGER' },
-      });
+      let ride = await this.ownRide(tx, passengerId, rideId);
+      if (ride.status === 'REQUESTED') {
+        const res = await tx.rideRequest.updateMany({
+          where: { id: ride.id, status: 'REQUESTED' },
+          data: { status: 'CANCELLED', cancelledBy: 'PASSENGER' },
+        });
+        if (res.count === 1) {
+          await this.events.record(tx, {
+            type: 'RIDE_CANCELLED',
+            rideRequestId: ride.id,
+            from: 'REQUESTED',
+            to: 'CANCELLED',
+            actorUserId: passengerId,
+            metadata: { cancelledBy: 'PASSENGER' },
+          });
+          return;
+        }
+        ride = await tx.rideRequest.findUniqueOrThrow({
+          where: { id: ride.id },
+        }); // matched meanwhile
+      }
+      if (ride.status === 'MATCHED' || ride.status === 'DRIVER_ARRIVED') {
+        if (await this.pools.leavePool(tx, ride, passengerId)) return;
+        ride = await tx.rideRequest.findUniqueOrThrow({
+          where: { id: ride.id },
+        }); // pool started meanwhile
+      }
+      throw invalidTransition('Ride', ride.status, 'CANCELLED');
     });
     return this.detail(passengerId, rideId);
   }

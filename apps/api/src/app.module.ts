@@ -7,6 +7,7 @@ import { AuthModule } from './auth/auth.module';
 import { validateEnv } from './common/env';
 import { HealthController } from './health/health.controller';
 import { EventsModule } from './events/events.module';
+import { PoolsModule } from './pools/pools.module';
 import { PrismaModule } from './prisma/prisma.module';
 import { RidesModule } from './rides/rides.module';
 import { ZonesModule } from './zones/zones.module';
@@ -37,6 +38,7 @@ import { ZonesModule } from './zones/zones.module';
     ZonesModule,
     EventsModule,
     RidesModule,
+    PoolsModule,
   ],
   controllers: [HealthController],
   providers: [{ provide: APP_GUARD, useClass: ThrottlerGuard }],

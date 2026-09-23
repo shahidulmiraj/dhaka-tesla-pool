@@ -1,7 +1,14 @@
 import { INestApplication } from '@nestjs/common';
 import { PrismaService } from '../src/prisma/prisma.service';
 import { api, auth, createApp, resetDb, zoneId } from './app';
-import { Actor, requestRide, signUp } from './cast';
+import {
+  accept,
+  Actor,
+  goOnline,
+  poolAction,
+  requestRide,
+  signUp,
+} from './cast';
 
 describe("users can't read or modify another user's ride", () => {
   let app: INestApplication;
@@ -73,5 +80,27 @@ describe("users can't read or modify another user's ride", () => {
       })
       .expect(400);
     expect(res.body.code).toBe('VALIDATION_ERROR');
+  });
+
+  it("Kamal cannot read or drive Jashim's pool; Nusrat cannot call driver endpoints", async () => {
+    const kamal = await signUp(app, 'kamal');
+    await goOnline(app, jashim).expect(200);
+    const poolId = (await accept(app, jashim, nusratRideId).expect(201)).body
+      .id;
+
+    const read = await api(app)
+      .get(`/api/v1/driver/pools/${poolId}`)
+      .set(auth(kamal.token))
+      .expect(403);
+    expect(read.body.code).toBe('FORBIDDEN');
+    await poolAction(app, jashim, poolId, 'arrive').expect(200);
+    const start = await poolAction(app, kamal, poolId, 'start').expect(403);
+    expect(start.body.code).toBe('FORBIDDEN');
+    expect(
+      (await prisma.pool.findUniqueOrThrow({ where: { id: poolId } })).status,
+    ).toBe('DRIVER_ARRIVED');
+
+    const asPassenger = await accept(app, nusrat, nusratRideId).expect(403);
+    expect(asPassenger.body.code).toBe('FORBIDDEN');
   });
 });
