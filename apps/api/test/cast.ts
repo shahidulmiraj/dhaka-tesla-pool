@@ -1,0 +1,98 @@
+import { INestApplication } from '@nestjs/common';
+import { PrismaService } from '../src/prisma/prisma.service';
+import { api } from './app';
+
+// The PRD's cast, created through the real signup endpoint.
+export const PASSWORD = 'Dhaka2026!';
+
+export interface Actor {
+  token: string;
+  user: { id: string; fullName: string; role: string };
+}
+
+type Person = {
+  email: string;
+  fullName: string;
+  role: 'PASSENGER' | 'DRIVER';
+  wallet?: number;
+  vehicle?: { name: string; capacity: number };
+};
+
+export const PEOPLE = {
+  jashim: {
+    email: 'jashim@teslapool.demo',
+    fullName: 'Jashim Uddin',
+    role: 'DRIVER',
+    vehicle: { name: 'Bullet', capacity: 3 },
+  },
+  kamal: {
+    email: 'kamal@teslapool.demo',
+    fullName: 'Kamal Hossain',
+    role: 'DRIVER',
+    vehicle: { name: 'Rocket', capacity: 2 },
+  },
+  nusrat: {
+    email: 'nusrat@teslapool.demo',
+    fullName: 'Nusrat Jahan',
+    role: 'PASSENGER',
+    wallet: 50000,
+  },
+  rafiq: {
+    email: 'rafiq@teslapool.demo',
+    fullName: 'Rafiq Ahmed',
+    role: 'PASSENGER',
+  },
+  shirin: {
+    email: 'shirin@teslapool.demo',
+    fullName: 'Shirin Akter',
+    role: 'PASSENGER',
+    wallet: 3000,
+  },
+  // Extra Banani commuters for the capacity and race tests.
+  tania: {
+    email: 'tania@teslapool.demo',
+    fullName: 'Tania Rahman',
+    role: 'PASSENGER',
+  },
+  farhan: {
+    email: 'farhan@teslapool.demo',
+    fullName: 'Farhan Kabir',
+    role: 'PASSENGER',
+  },
+  mim: {
+    email: 'mim@teslapool.demo',
+    fullName: 'Mim Chowdhury',
+    role: 'PASSENGER',
+  },
+  sabbir: {
+    email: 'sabbir@teslapool.demo',
+    fullName: 'Sabbir Hasan',
+    role: 'PASSENGER',
+  },
+} satisfies Record<string, Person>;
+
+export type Name = keyof typeof PEOPLE;
+
+export async function signUp(
+  app: INestApplication,
+  name: Name,
+): Promise<Actor> {
+  const { wallet, ...body } = PEOPLE[name] as Person;
+  const res = await api(app)
+    .post('/api/v1/auth/signup')
+    .send({ ...body, password: PASSWORD })
+    .expect(201);
+  if (wallet) {
+    const prisma = app.get(PrismaService);
+    await prisma.user.update({
+      where: { id: res.body.user.id },
+      data: { walletBalancePaisa: wallet },
+    });
+  }
+  return res.body as Actor;
+}
+
+export async function zone(app: INestApplication, name: string) {
+  const prisma = app.get(PrismaService);
+  return (await prisma.zone.findUniqueOrThrow({ where: { name } })).id;
+}
