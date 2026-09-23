@@ -1,8 +1,17 @@
 import { Injectable, Logger } from '@nestjs/common';
+import { Pool, RideRequest } from '@prisma/client';
 import { DomainError } from '../common/errors';
 import { EventsService } from '../events/events.service';
-import { PrismaService } from '../prisma/prisma.service';
-import { ACTIVE_POOL_STATUSES } from './transitions';
+import { PrismaService, Tx } from '../prisma/prisma.service';
+import { zoneView } from '../zones/zones.service';
+import { isDestinationCompatible } from './matching';
+import {
+  ACTIVE_POOL_STATUSES,
+  JOINABLE_POOL_STATUSES,
+  MEMBER_STATUS_FOR_POOL,
+} from './transitions';
+
+export type JoinVia = 'ACCEPT' | 'SWEEP' | 'AUTO_JOIN';
 
 @Injectable()
 export class PoolsService {
@@ -61,6 +70,80 @@ export class PoolsService {
       seats: r.seats,
       createdAt: r.createdAt,
     }));
+  }
+
+  /**
+   * The ONLY writer of ride_requests.pool_id (on join) and pools.seats_taken (up).
+   * Runs inside the caller's transaction; returns false when the request cannot join.
+   *
+   * 1. Conditional UPDATE on the pool row: Postgres row-locks it, and a concurrent
+   *    joiner blocks, then re-evaluates the WHERE against the new seats_taken
+   *    (READ COMMITTED) and updates 0 rows. CHECK (seats_taken <= capacity) backs it.
+   * 2. Holding that lock, re-check the destination rule against the members as
+   *    they are now, so two incompatible passengers cannot slip in together.
+   * 3. Conditional UPDATE on the request (still REQUESTED, no pool).
+   * A failed step 2 or 3 gives the seats back in the same transaction.
+   */
+  async joinPool(
+    tx: Tx,
+    pool: Pick<Pool, 'id' | 'capacity'>,
+    request: Pick<RideRequest, 'id' | 'seats' | 'dropoffZoneId'>,
+    actorUserId: string | null,
+    via: JoinVia,
+  ): Promise<boolean> {
+    const seat = await tx.pool.updateMany({
+      where: {
+        id: pool.id,
+        status: { in: JOINABLE_POOL_STATUSES },
+        seatsTaken: { lte: pool.capacity - request.seats }, // capacity is an immutable snapshot
+      },
+      data: { seatsTaken: { increment: request.seats } },
+    });
+    if (seat.count === 0) return false;
+
+    const locked = await tx.pool.findUniqueOrThrow({ where: { id: pool.id } });
+    const [dropoff, members] = await Promise.all([
+      tx.zone.findUniqueOrThrow({ where: { id: request.dropoffZoneId } }),
+      tx.rideRequest.findMany({
+        where: { poolId: pool.id, id: { not: request.id } },
+        include: { dropoffZone: true },
+      }),
+    ]);
+    const compatible = isDestinationCompatible(
+      zoneView(dropoff),
+      members.map((m) => zoneView(m.dropoffZone)),
+    );
+    const status = MEMBER_STATUS_FOR_POOL[locked.status]!; // OPEN -> MATCHED, DRIVER_ARRIVED -> DRIVER_ARRIVED
+    const joined =
+      compatible &&
+      (
+        await tx.rideRequest.updateMany({
+          where: { id: request.id, status: 'REQUESTED', poolId: null },
+          data: { poolId: pool.id, status },
+        })
+      ).count === 1;
+    if (!joined) {
+      await tx.pool.update({
+        where: { id: pool.id },
+        data: { seatsTaken: { decrement: request.seats } },
+      });
+      return false;
+    }
+    await this.events.record(tx, {
+      type: 'RIDE_MATCHED',
+      rideRequestId: request.id,
+      poolId: pool.id,
+      from: 'REQUESTED',
+      to: status,
+      actorUserId,
+      metadata: {
+        seats: request.seats,
+        via,
+        seatsTaken: locked.seatsTaken,
+        capacity: locked.capacity,
+      },
+    });
+    return true;
   }
 
   private async assertOnline(driverId: string) {
