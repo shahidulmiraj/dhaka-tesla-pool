@@ -1,0 +1,10 @@
+{
+  "name": "dhaka-tesla-pool",
+  "private": true,
+  "packageManager": "pnpm@10.34.5",
+  "engines": { "node": ">=22" },
+  "scripts": {
+    "dev:api": "pnpm --filter api start:dev",
+    "dev:web": "pnpm --filter web dev"
+  }
+}
