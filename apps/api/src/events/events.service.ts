@@ -2,6 +2,7 @@ import { Injectable } from '@nestjs/common';
 import { Prisma } from '@prisma/client';
 import { Tx } from '../prisma/prisma.service';
 
+// Driver availability is not a ride event: ev_has_subject requires a ride or a pool.
 export type EventType =
   | 'RIDE_REQUESTED'
   | 'RIDE_MATCHED'
@@ -13,9 +14,7 @@ export type EventType =
   | 'POOL_COMPLETED'
   | 'POOL_CANCELLED'
   | 'FARE_LOCKED'
-  | 'PAYMENT_SETTLED'
-  | 'DRIVER_ONLINE'
-  | 'DRIVER_OFFLINE';
+  | 'PAYMENT_SETTLED';
 
 export interface EventInput {
   type: EventType;
