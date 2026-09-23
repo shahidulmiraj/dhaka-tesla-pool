@@ -1,6 +1,5 @@
 import { INestApplication } from '@nestjs/common';
-import { api, createApp } from './app';
-import { zone } from './cast';
+import { api, createApp, zoneId } from './app';
 
 describe('fare estimate (public)', () => {
   let app: INestApplication;
@@ -8,8 +7,8 @@ describe('fare estimate (public)', () => {
 
   beforeAll(async () => {
     ({ app } = await createApp());
-    [banani, mohakhali, gulshan1] = await Promise.all(
-      ['Banani', 'Mohakhali', 'Gulshan 1'].map((n) => zone(app, n)),
+    [banani, mohakhali, gulshan1] = ['Banani', 'Mohakhali', 'Gulshan 1'].map(
+      zoneId,
     );
   });
   afterAll(() => app.close());

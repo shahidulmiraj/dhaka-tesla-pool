@@ -11,7 +11,17 @@ export async function createApp() {
   }).compile();
   const app = configureApp(moduleRef.createNestApplication());
   await app.init();
-  return { app, prisma: app.get(PrismaService) };
+  const prisma = app.get(PrismaService);
+  for (const z of await prisma.zone.findMany()) zoneIds.set(z.name, z.id);
+  return { app, prisma };
+}
+
+// Zones are immutable reference data, so ids are cached once per test file.
+const zoneIds = new Map<string, number>();
+export function zoneId(name: string) {
+  const id = zoneIds.get(name);
+  if (!id) throw new Error(`Unknown zone ${name}`);
+  return id;
 }
 
 export async function resetDb(prisma: PrismaService) {

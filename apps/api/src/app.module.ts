@@ -6,7 +6,9 @@ import { LoggerModule } from 'nestjs-pino';
 import { AuthModule } from './auth/auth.module';
 import { validateEnv } from './common/env';
 import { HealthController } from './health/health.controller';
+import { EventsModule } from './events/events.module';
 import { PrismaModule } from './prisma/prisma.module';
+import { RidesModule } from './rides/rides.module';
 import { ZonesModule } from './zones/zones.module';
 
 @Module({
@@ -33,6 +35,8 @@ import { ZonesModule } from './zones/zones.module';
     PrismaModule,
     AuthModule,
     ZonesModule,
+    EventsModule,
+    RidesModule,
   ],
   controllers: [HealthController],
   providers: [{ provide: APP_GUARD, useClass: ThrottlerGuard }],
