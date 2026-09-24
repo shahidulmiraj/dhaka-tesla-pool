@@ -14,3 +14,18 @@ export function isDestinationCompatible(
 // Rule 3: seats_taken + seats <= capacity.
 export const fits = (seatsTaken: number, capacity: number, seats: number) =>
   seatsTaken + seats <= capacity;
+
+// Where the vehicle ends up: with no per-passenger drop-off order in the MVP,
+// the last stop is taken to be the drop-off farthest from the pickup.
+export function endZone<Z extends Point>(
+  pickup: Point,
+  dropoffs: Z[],
+): Z | null {
+  let best: Z | null = null;
+  let bestM = -1;
+  for (const d of dropoffs) {
+    const m = haversineM(pickup, d);
+    if (m > bestM) [best, bestM] = [d, m];
+  }
+  return best;
+}

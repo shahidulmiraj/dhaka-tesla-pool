@@ -31,6 +31,8 @@ export interface PoolDetail {
   seatsTaken: number;
   pickupZone: { id: number; name: string };
   members: PoolMember[];
+  /** Last stop (farthest drop-off); becomes the serving zone after completion. */
+  endZone: { id: number; name: string } | null;
   events: { type: string; rideId: string | null; at: string; metadata: Record<string, unknown> }[];
   createdAt: string;
   updatedAt: string;

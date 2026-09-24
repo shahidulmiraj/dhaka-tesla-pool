@@ -111,6 +111,11 @@ describe("Nusrat's and Rafiq's pooled fares calculate correctly", () => {
     expect(JSON.stringify(done.body)).not.toMatch(
       /walletBefore|walletAfter|@teslapool/,
     );
+    // Bullet's last stop is the drop-off farthest from Banani: Mohakhali (1824 m).
+    expect(done.body.endZone).toEqual({
+      id: expect.any(Number),
+      name: 'Mohakhali',
+    });
 
     const wallet = async (a: Actor) =>
       (await api(app).get('/api/v1/auth/me').set(auth(a.token))).body

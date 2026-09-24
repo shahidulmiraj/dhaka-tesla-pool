@@ -34,7 +34,8 @@ cancel while valid (with confirmation); ride history and a per-ride timeline.
 **Driver:** sign up with a vehicle and fixed seat count; go online/offline; pick the zone served; see waiting requests
 there (first names only); accept one, which creates a pool and sweeps in compatible waiting requests; manifest with
 seats "3 / 3 — Bullet is full", each member's fare and payment status, cash to collect; arrive → start → complete, or
-cancel; pool history with timeline.
+cancel; after completing a trip the serving zone switches to where it ended (the last drop-off); pool history with
+timeline.
 
 **Pooling:** one matching rule applied by one function (`joinPool`) from both entry points (passenger request and
 driver accept); seats enforced by a conditional UPDATE plus a database CHECK; fares lock for every member when the
@@ -575,7 +576,10 @@ read replicas or a cache first, and to SSE. Details: [docs/scaling.md](docs/scal
 7. Zone coordinates are approximate centre points chosen for the demo.
 8. One vehicle per driver, one active request per passenger, one active pool per driver.
 9. No ratings, cancellation fees or per-passenger dropoff ordering in the MVP.
-10. A request asking for more seats than any vehicle has waits forever; a driver accepting it gets
+10. When a trip completes, the driver is where the last passenger got off. With no drop-off order in the MVP, the last
+    stop is the drop-off farthest from the pickup (`endZone` on the pool), and the driver's serving zone switches to it
+    (they can change it back).
+11. A request asking for more seats than any vehicle has waits forever; a driver accepting it gets
     `409 SEATS_EXCEED_CAPACITY`.
 
 ## 24. Known limitations
