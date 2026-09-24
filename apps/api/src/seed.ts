@@ -83,6 +83,9 @@ export async function seed(prisma: PrismaClient) {
         passwordHash,
         walletBalancePaisa: c.wallet,
         vehicle: 'vehicle' in c ? { create: c.vehicle } : undefined,
+        // Drivers start the day serving Banani.
+        servingZone:
+          c.role === 'DRIVER' ? { connect: { name: 'Banani' } } : undefined,
       },
     });
   }
