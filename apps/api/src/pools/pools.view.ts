@@ -1,11 +1,16 @@
 import { Pool, RideEvent, RideRequest, User, Zone } from '@prisma/client';
 import { finalFare, quote } from '../fare/fare';
+import { zoneView } from '../zones/zones.service';
+import { endZone } from './matching';
 
 type Member = RideRequest & { passenger: User; dropoffZone: Zone };
 
 // Drivers collect cash, so they see each member's fare and payment status,
 // but never wallet balances or emails.
 const HIDDEN_FROM_DRIVER = ['walletBefore', 'walletAfter'];
+
+const zoneRef = (z: { id: number; name: string } | null) =>
+  z && { id: z.id, name: z.name };
 
 export const poolDetailView = (
   p: Pool & { pickupZone: Zone; members: Member[] },
@@ -43,6 +48,13 @@ export const poolDetailView = (
       ),
     ),
   })),
+  // Where Bullet finishes; the driver's app switches its serving zone here on completion.
+  endZone: zoneRef(
+    endZone(
+      zoneView(p.pickupZone),
+      p.members.map((m) => zoneView(m.dropoffZone)),
+    ),
+  ),
   createdAt: p.createdAt,
   updatedAt: p.updatedAt,
 });

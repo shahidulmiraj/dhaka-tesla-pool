@@ -10,10 +10,9 @@ import { ActivePoolCard } from '@/features/driver/ActivePoolCard';
 import { AvailabilityToggle } from '@/features/driver/AvailabilityToggle';
 import { OpenRequestList } from '@/features/driver/OpenRequestList';
 import { useActivePool } from '@/features/driver/queries';
+import { readServingZone, writeServingZone } from '@/features/driver/servingZone';
 import { ZoneSelect } from '@/features/driver/ZoneSelect';
 import { useZones } from '@/features/rides/queries';
-
-const ZONE_KEY = 'tp_driver_zone';
 
 export default function DriverDashboard() {
   const router = useRouter();
@@ -21,9 +20,9 @@ export default function DriverDashboard() {
   const zones = useZones();
   const active = useActivePool();
   // Safe to read localStorage here: RequireRole renders this page only in the browser.
-  const [zoneId, setZoneId] = useState(() => Number(localStorage.getItem(ZONE_KEY)) || 0);
+  const [zoneId, setZoneId] = useState(() => readServingZone());
   const chooseZone = (id: number) => {
-    localStorage.setItem(ZONE_KEY, String(id));
+    writeServingZone(id);
     setZoneId(id);
   };
   const zoneName = zones.data?.find((z) => z.id === zoneId)?.name ?? '';

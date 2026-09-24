@@ -1,5 +1,5 @@
 import { ZONES } from '../seed';
-import { fits, isDestinationCompatible } from './matching';
+import { endZone, fits, isDestinationCompatible } from './matching';
 
 const z = (name: string) => ZONES.find((x) => x.name === name)!;
 
@@ -35,5 +35,18 @@ describe('fits', () => {
     expect(fits(2, 3, 1)).toBe(true);
     expect(fits(2, 3, 2)).toBe(false);
     expect(fits(3, 3, 1)).toBe(false);
+  });
+});
+
+describe('endZone (last stop = drop-off farthest from pickup)', () => {
+  it('Bullet from Banani with Nusrat, Rafiq and Shirin ends in Mohakhali (1824 m)', () => {
+    expect(
+      endZone(z('Banani'), [z('Gulshan 2'), z('Gulshan 1'), z('Mohakhali')])
+        ?.name,
+    ).toBe('Mohakhali');
+  });
+  it('a solo trip ends at its only drop-off; no members -> null', () => {
+    expect(endZone(z('Banani'), [z('Uttara')])?.name).toBe('Uttara');
+    expect(endZone(z('Banani'), [])).toBeNull();
   });
 });
