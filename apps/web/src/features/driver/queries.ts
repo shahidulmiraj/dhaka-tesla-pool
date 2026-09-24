@@ -5,6 +5,7 @@ import { toast } from 'sonner';
 import type { Me } from '@/features/auth/types';
 import { isTerminal, type PoolAction } from '@/lib/status';
 import * as driver from './api';
+import { writeServingZone } from './servingZone';
 
 const POLL_MS = 4000;
 
@@ -80,6 +81,11 @@ export function usePoolAction(poolId: string) {
       qc.setQueryData(['driver', 'pools', pool.id], pool);
       qc.invalidateQueries({ queryKey: ['driver'] });
       toast.success(DONE[action]);
+      // The trip ends where the last passenger gets off: serve that zone next.
+      if (action === 'complete' && pool.endZone) {
+        writeServingZone(pool.endZone.id);
+        toast.info(`Now serving ${pool.endZone.name}`);
+      }
     },
     onError: (e) => {
       toast.error(e.message);
