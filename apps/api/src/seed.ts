@@ -120,8 +120,8 @@ export async function seed(prisma: PrismaClient) {
         createdAt: at(2),
       },
     });
-    // Fares from the documented model: Nusrat 1824 m -> 5736 solo / 5189 pooled,
-    // Rafiq 1770 m -> 5655 solo / 5124 pooled.
+    // Fares from the documented model for a pool of two requests (20 % tier):
+    // Nusrat 1824 m -> 5736 solo / 5189 pooled, Rafiq 1770 m -> 5655 solo / 5124 pooled.
     const rides = [
       {
         id: HISTORY_NUSRAT_RIDE_ID,
