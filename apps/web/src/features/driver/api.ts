@@ -4,6 +4,11 @@ import type { OpenRequest, PoolDetail, PoolSummary } from './types';
 
 export const setOnline = (online: boolean) =>
   api<{ isOnline: boolean }>('/driver/status', { method: 'PATCH', body: { online } });
+export const setServingZone = (pickupZoneId: number) =>
+  api<{ servingZone: { id: number; name: string } }>('/driver/zone', {
+    method: 'PATCH',
+    body: { pickupZoneId },
+  });
 export const getOpenRequests = (pickupZoneId: number) =>
   api<OpenRequest[]>('/driver/requests', { query: { pickupZoneId } });
 export const acceptRequest = (requestId: string) =>

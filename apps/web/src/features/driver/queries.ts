@@ -5,7 +5,6 @@ import { toast } from 'sonner';
 import type { Me } from '@/features/auth/types';
 import { isTerminal, type PoolAction } from '@/lib/status';
 import * as driver from './api';
-import { writeServingZone } from './servingZone';
 
 const POLL_MS = 4000;
 
@@ -49,6 +48,18 @@ export function useSetOnline() {
   });
 }
 
+export function useSetServingZone() {
+  const qc = useQueryClient();
+  return useMutation({
+    mutationFn: driver.setServingZone,
+    onSuccess: ({ servingZone }) => {
+      qc.setQueryData<Me>(['me'], (me) => me && { ...me, servingZone });
+      qc.invalidateQueries({ queryKey: ['driver', 'requests'] });
+    },
+    onError: (e) => toast.error(e.message),
+  });
+}
+
 export function useAccept(onAccepted: (poolId: string) => void) {
   const qc = useQueryClient();
   return useMutation({
@@ -81,10 +92,10 @@ export function usePoolAction(poolId: string) {
       qc.setQueryData(['driver', 'pools', pool.id], pool);
       qc.invalidateQueries({ queryKey: ['driver'] });
       toast.success(DONE[action]);
-      // The trip ends where the last passenger gets off: serve that zone next.
-      if (action === 'complete' && pool.endZone) {
-        writeServingZone(pool.endZone.id);
-        toast.info(`Now serving ${pool.endZone.name}`);
+      // The API moved the serving zone to the last drop-off; refresh the profile.
+      if (action === 'complete') {
+        qc.invalidateQueries({ queryKey: ['me'] });
+        if (pool.endZone) toast.info(`Now serving ${pool.endZone.name}`);
       }
     },
     onError: (e) => {
