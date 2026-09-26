@@ -1,7 +1,6 @@
 'use client';
 
 import { useRouter } from 'next/navigation';
-import { useState } from 'react';
 import { AsyncState } from '@/components/AsyncState';
 import { EmptyState } from '@/components/EmptyState';
 import { Skeleton } from '@/components/ui/skeleton';
@@ -9,23 +8,17 @@ import { useMe } from '@/features/auth/useMe';
 import { ActivePoolCard } from '@/features/driver/ActivePoolCard';
 import { AvailabilityToggle } from '@/features/driver/AvailabilityToggle';
 import { OpenRequestList } from '@/features/driver/OpenRequestList';
-import { useActivePool } from '@/features/driver/queries';
-import { readServingZone, writeServingZone } from '@/features/driver/servingZone';
+import { useActivePool, useSetServingZone } from '@/features/driver/queries';
 import { ZoneSelect } from '@/features/driver/ZoneSelect';
-import { useZones } from '@/features/rides/queries';
 
 export default function DriverDashboard() {
   const router = useRouter();
   const me = useMe();
-  const zones = useZones();
   const active = useActivePool();
-  // Safe to read localStorage here: RequireRole renders this page only in the browser.
-  const [zoneId, setZoneId] = useState(() => readServingZone());
-  const chooseZone = (id: number) => {
-    writeServingZone(id);
-    setZoneId(id);
-  };
-  const zoneName = zones.data?.find((z) => z.id === zoneId)?.name ?? '';
+  const setZone = useSetServingZone();
+  // Stored on the server: completing a trip moves it to the last drop-off.
+  const zoneId = me.data?.servingZone?.id ?? 0;
+  const zoneName = me.data?.servingZone?.name ?? '';
   const online = !!me.data?.isOnline;
 
   return (
@@ -33,7 +26,7 @@ export default function DriverDashboard() {
       <div className="flex flex-wrap items-center justify-between gap-3">
         <h1 className="text-xl font-semibold">Dashboard</h1>
         <div className="flex items-center gap-3">
-          <ZoneSelect value={zoneId} onChange={chooseZone} />
+          <ZoneSelect value={zoneId} onChange={(id) => setZone.mutate(id)} />
           <AvailabilityToggle online={online} />
         </div>
       </div>

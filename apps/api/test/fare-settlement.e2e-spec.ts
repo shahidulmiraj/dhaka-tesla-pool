@@ -116,6 +116,15 @@ describe("Nusrat's and Rafiq's pooled fares calculate correctly", () => {
       id: expect.any(Number),
       name: 'Mohakhali',
     });
+    // ...and Jashim now serves Mohakhali, stored on the server.
+    const me = await api(app)
+      .get('/api/v1/auth/me')
+      .set(auth(jashim.token))
+      .expect(200);
+    expect(me.body.servingZone).toEqual({
+      id: done.body.endZone.id,
+      name: 'Mohakhali',
+    });
 
     const wallet = async (a: Actor) =>
       (await api(app).get('/api/v1/auth/me').set(auth(a.token))).body

@@ -34,6 +34,11 @@ export class DriverController {
     return this.pools.setOnline(user.sub, dto.online);
   }
 
+  @Patch('zone')
+  zone(@CurrentUser() user: AuthUser, @Body() dto: OpenRequestsQueryDto) {
+    return this.pools.setServingZone(user.sub, dto.pickupZoneId);
+  }
+
   @Get('requests')
   requests(@CurrentUser() user: AuthUser, @Query() q: OpenRequestsQueryDto) {
     return this.pools.openRequests(user.sub, q.pickupZoneId);

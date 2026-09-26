@@ -6,7 +6,7 @@ import { finalFare, quote } from '../fare/fare';
 import { PageQueryDto } from '../rides/rides.dto';
 import { PrismaService, Tx } from '../prisma/prisma.service';
 import { zoneView } from '../zones/zones.service';
-import { isDestinationCompatible } from './matching';
+import { endZone, isDestinationCompatible } from './matching';
 import { poolDetailView, poolSummaryView } from './pools.view';
 import {
   ACTIVE_POOL_STATUSES,
@@ -64,6 +64,20 @@ export class PoolsService {
       online ? 'DRIVER_ONLINE' : 'DRIVER_OFFLINE',
     );
     return { isOnline: online };
+  }
+
+  async setServingZone(driverId: string, zoneId: number) {
+    const zone = await this.prisma.zone.findUnique({ where: { id: zoneId } });
+    if (!zone) {
+      throw new DomainError('VALIDATION_ERROR', 'Unknown zone', [
+        { field: 'pickupZoneId', problems: ['zone does not exist'] },
+      ]);
+    }
+    await this.prisma.user.update({
+      where: { id: driverId },
+      data: { servingZoneId: zone.id },
+    });
+    return { servingZone: { id: zone.id, name: zone.name } };
   }
 
   // "Relevant requests": waiting rides in the zone the driver chose, oldest first.
@@ -290,12 +304,29 @@ export class PoolsService {
     });
   }
 
+  // Settles every member, then moves the driver's serving zone to where the trip
+  // ended (the last drop-off), in the same transaction.
   complete(driverId: string, poolId: string) {
     return this.command(driverId, poolId, 'COMPLETED', async (tx) => {
       const members = await tx.rideRequest.findMany({
         where: { poolId },
+        include: { dropoffZone: true },
         orderBy: { createdAt: 'asc' },
       });
+      const { pickupZone } = await tx.pool.findUniqueOrThrow({
+        where: { id: poolId },
+        include: { pickupZone: true },
+      });
+      const end = endZone(
+        zoneView(pickupZone),
+        members.map((m) => zoneView(m.dropoffZone)),
+      );
+      if (end) {
+        await tx.user.update({
+          where: { id: driverId },
+          data: { servingZoneId: end.id },
+        });
+      }
       for (const m of members) {
         const payment = await this.settle(tx, m);
         await this.cascade(tx, m.id, 'IN_PROGRESS', {
