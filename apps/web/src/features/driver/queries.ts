@@ -9,10 +9,14 @@ import { writeServingZone } from './servingZone';
 
 const POLL_MS = 4000;
 
-export const useDriverRequests = (zoneId: number, enabled: boolean) =>
+export const useDriverRequests = (
+  zoneId: number,
+  dropoffZoneId?: number,
+  enabled: boolean = true,
+) =>
   useQuery({
-    queryKey: ['driver', 'requests', zoneId],
-    queryFn: () => driver.getOpenRequests(zoneId),
+    queryKey: ['driver', 'requests', zoneId, dropoffZoneId ?? null],
+    queryFn: () => driver.getOpenRequests(zoneId, dropoffZoneId),
     enabled: enabled && zoneId > 0,
     refetchInterval: POLL_MS,
     refetchIntervalInBackground: false,
