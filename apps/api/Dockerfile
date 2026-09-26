@@ -23,5 +23,6 @@ COPY --from=build /out/package.json ./package.json
 COPY --from=build /repo/apps/api/dist ./dist
 COPY --from=build /out/prisma ./prisma
 COPY apps/api/docker-entrypoint.sh .
+RUN chmod +x docker-entrypoint.sh
 EXPOSE 3001
-CMD ["sh", "docker-entrypoint.sh"]
+CMD ["sh", "-c", "./docker-entrypoint.sh"]

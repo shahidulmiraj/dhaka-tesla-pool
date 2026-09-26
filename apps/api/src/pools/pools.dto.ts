@@ -1,6 +1,6 @@
-import { ApiProperty } from '@nestjs/swagger';
+import { ApiProperty, ApiPropertyOptional } from '@nestjs/swagger';
 import { Type } from 'class-transformer';
-import { IsBoolean, IsInt, IsUUID, Min } from 'class-validator';
+import { IsBoolean, IsInt, IsOptional, IsUUID, Min } from 'class-validator';
 
 export class DriverStatusDto {
   @ApiProperty()
@@ -14,6 +14,13 @@ export class OpenRequestsQueryDto {
   @IsInt()
   @Min(1)
   pickupZoneId!: number;
+
+  @ApiPropertyOptional({ example: 2 })
+  @IsOptional()
+  @Type(() => Number)
+  @IsInt()
+  @Min(1)
+  dropoffZoneId?: number;
 }
 
 export class AcceptDto {

@@ -1,5 +1,6 @@
-import { PrismaClient } from '@prisma/client';
+import { Prisma, PrismaClient } from '@prisma/client';
 import * as bcrypt from 'bcryptjs';
+
 
 // Idempotent: runs on every container boot. Upserts keyed by email / zone name /
 // fixed UUIDs, and `update: {}` so a reboot never resets balances or history.
@@ -106,7 +107,7 @@ export async function seed(prisma: PrismaClient) {
   const at = (minutes: number) =>
     new Date(Date.now() - 24 * 3600_000 + minutes * 60_000);
 
-  await prisma.$transaction(async (tx) => {
+  await prisma.$transaction(async (tx: Prisma.TransactionClient) => {
     await tx.pool.create({
       data: {
         id: HISTORY_POOL_ID,

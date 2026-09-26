@@ -15,8 +15,16 @@ export interface FareEstimate {
   distanceM: number;
   seats: number;
   soloFarePaisa: number;
-  pooledFarePaisa: number;
-  breakdown: { baseFarePaisa: number; distanceChargePaisa: number; poolDiscountPaisa: number };
+  /** 3 pooled requests = 30 % off the distance charge */
+  pooled3FarePaisa: number;
+  /** 5+ requests = 50 % off (maximum discount) */
+  pooledMaxFarePaisa: number;
+  breakdown: {
+    baseFarePaisa: number;
+    distanceChargePaisa: number;
+    poolDiscount3Paisa: number;
+    poolDiscountMaxPaisa: number;
+  };
 }
 
 export interface RideEvent {
@@ -45,6 +53,7 @@ export interface RideDetail {
     status: PoolStatus;
     driverName: string;
     vehicleName: string;
+    capacity: number;
     coPassengers: number;
   } | null;
   events: RideEvent[];

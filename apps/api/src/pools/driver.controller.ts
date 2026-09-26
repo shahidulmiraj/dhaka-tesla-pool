@@ -41,7 +41,11 @@ export class DriverController {
 
   @Get('requests')
   requests(@CurrentUser() user: AuthUser, @Query() q: OpenRequestsQueryDto) {
-    return this.pools.openRequests(user.sub, q.pickupZoneId);
+    return this.pools.openRequests(
+      user.sub,
+      q.pickupZoneId,
+      q.dropoffZoneId,
+    );
   }
 
   @Post('pools')

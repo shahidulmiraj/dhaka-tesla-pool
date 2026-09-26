@@ -1,32 +1,45 @@
 'use client';
 
 import { useRouter } from 'next/navigation';
+import { useState } from 'react';
 import { AsyncState } from '@/components/AsyncState';
 import { EmptyState } from '@/components/EmptyState';
 import { Skeleton } from '@/components/ui/skeleton';
 import { useMe } from '@/features/auth/useMe';
 import { ActivePoolCard } from '@/features/driver/ActivePoolCard';
 import { AvailabilityToggle } from '@/features/driver/AvailabilityToggle';
+import { DestinationSelect } from '@/features/driver/DestinationSelect';
 import { OpenRequestList } from '@/features/driver/OpenRequestList';
 import { useActivePool, useSetServingZone } from '@/features/driver/queries';
 import { ZoneSelect } from '@/features/driver/ZoneSelect';
+import { useZones } from '@/features/rides/queries';
 
 export default function DriverDashboard() {
   const router = useRouter();
   const me = useMe();
   const active = useActivePool();
+  const zones = useZones();
   const setZone = useSetServingZone();
   // Stored on the server: completing a trip moves it to the last drop-off.
   const zoneId = me.data?.servingZone?.id ?? 0;
   const zoneName = me.data?.servingZone?.name ?? '';
+  const [destinationZoneId, setDestinationZoneId] = useState<number | undefined>(undefined);
+  // A destination equal to the pickup zone is meaningless, so it is dropped.
+  const activeDestination = destinationZoneId === zoneId ? undefined : destinationZoneId;
+  const destinationZoneName = zones.data?.find((z) => z.id === activeDestination)?.name;
   const online = !!me.data?.isOnline;
 
   return (
     <section className="space-y-5">
       <div className="flex flex-wrap items-center justify-between gap-3">
         <h1 className="text-xl font-semibold">Dashboard</h1>
-        <div className="flex items-center gap-3">
+        <div className="flex flex-wrap items-center gap-3">
           <ZoneSelect value={zoneId} onChange={(id) => setZone.mutate(id)} />
+          <DestinationSelect
+            pickupZoneId={zoneId}
+            value={activeDestination}
+            onChange={setDestinationZoneId}
+          />
           <AvailabilityToggle online={online} />
         </div>
       </div>
@@ -42,6 +55,10 @@ export default function DriverDashboard() {
             <OpenRequestList
               zoneId={zoneId}
               zoneName={zoneName}
+              destinationZoneId={activeDestination}
+              destinationZoneName={destinationZoneName}
+              onSelectDestination={setDestinationZoneId}
+              onClearDestination={() => setDestinationZoneId(undefined)}
               onAccepted={(id) => router.push(`/driver/pools/${id}`)}
             />
           )
