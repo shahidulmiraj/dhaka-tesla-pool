@@ -27,12 +27,12 @@ what stage the trip is at, and keep enough history to answer "what happened?" la
 ## 3. Features
 
 **Passenger:** sign up / sign in; request a ride (pickup zone, destination zone, seats, cash or TeslaPay); live fare
-preview ("Up to 57.36 BDT · 51.89 BDT if pooled"); status card that updates every 4 s (Waiting → Matched → Driver
+preview (solo 57.36 BDT · 49.15 BDT with 3 pooled · 43.68 BDT at the 50 % cap); status card that updates every 4 s (Waiting → Matched → Driver
 arrived → In progress → Completed, or Cancelled); driver and vehicle name once matched, co-passengers only as a count;
 cancel while valid (with confirmation); ride history and a per-ride timeline.
 
 **Driver:** sign up with a vehicle and fixed seat count; go online/offline; pick the zone served; see waiting requests
-there (first names only); accept one, which creates a pool and sweeps in compatible waiting requests; manifest with
+there (first names only), optionally filtered by destination; accept one, which creates a pool and sweeps in compatible waiting requests; manifest with
 seats "3 / 3 — Bullet is full", each member's fare and payment status, cash to collect; arrive → start → complete, or
 cancel; after completing a trip the serving zone switches to where it ended (the last drop-off); pool history with
 timeline.
@@ -53,9 +53,9 @@ Captured from the local `docker compose` stack.
 | ![Login with demo accounts](docs/screenshots/01-login.png) | ![Driver registration with vehicle and seats](docs/screenshots/02-register-driver.png) |
 | Login with the seeded demo accounts | Driver registration: vehicle name and fixed seat count |
 | ![Request form with fare preview](docs/screenshots/03-request-form.png) | ![Status card matched](docs/screenshots/04-status-matched.png) |
-| Nusrat's request with the fare preview "Up to 57.36 · 51.89 if pooled" | Matched: "Jashim · Bullet · 2 co-passengers", no names |
+| Nusrat's request with the tiered fare preview: solo, 3 pooled, 5+ pooled | Matched: "Jashim · Bullet · 2 co-passengers", no names; 49.15 if Bullet fills |
 | ![Driver dashboard with three waiting](docs/screenshots/06-driver-three-waiting.png) | ![Pool manifest full](docs/screenshots/07-pool-manifest-full.png) |
-| Jashim online in Banani with three waiting requests | Manifest "3 / 3 — Bullet is full" with per-member fares |
+| Jashim online in Banani with three waiting requests and the "Going to" filter | Manifest "3 / 3 — Bullet is full": 49.15 / 48.58 / 38.25 at 30 % |
 | ![Pool completed](docs/screenshots/08-pool-completed.png) | ![Ride detail timeline](docs/screenshots/09-ride-detail-timeline.png) |
 | After completion: Nusrat paid via TeslaPay, Rafiq cash, Shirin **cash due** | A cancelled ride's timeline, from `ride_events` |
 | ![Empty history](docs/screenshots/05-history-empty.png) | ![Cold start banner](docs/screenshots/10-cold-start-banner.png) |
@@ -264,30 +264,39 @@ accepts Nusrat, the same rule puts them in the same pool. Known approximation: t
 distance_m     = haversine(pickup zone, dropoff zone), whole metres, stored on the request
 distanceCharge = round(distance_m × 1500 / 1000)          15 BDT per km
 soloFare       = 3000 + distanceCharge                    30 BDT base
-poolDiscount   = round(0.20 × distanceCharge)             only if ≥ 2 requests share the pool at start
+rate           = 0 (alone) · 0.20 (2 requests) · 0.30 (3) · 0.40 (4) · 0.50 (5 or more, cap)
+poolDiscount   = round(rate × distanceCharge)             rate from the requests sharing the pool at start
 passengerFare  = (soloFare − poolDiscount) × seats
 ```
 
-| Trip | distance_m | distanceCharge | solo | discount | pooled |
-|---|---|---|---|---|---|
-| Nusrat: Banani → Mohakhali | 1 824 | 2 736 | **5 736** (57.36 BDT) | 547 | **5 189** (51.89 BDT) |
-| Rafiq: Banani → Gulshan 1 | 1 770 | 2 655 | **5 655** (56.55 BDT) | 531 | **5 124** (51.24 BDT) |
-| Shirin: Banani → Gulshan 2 | 785 | 1 178 | 4 178 (41.78 BDT) | 236 | 3 942 (39.42 BDT) |
+The discount grows with the pool: the fuller the Tesla, the more each rider saves, which rewards sharing. It only
+touches the distance charge, so the 30 BDT base always covers the driver's stop.
 
-Check Nusrat by hand: `1824 × 1500 / 1000 = 2736`; `3000 + 2736 = 5736`; `0.2 × 2736 = 547.2 → 547`;
-`5736 − 547 = 5189`. The same line is a test in `apps/api/src/fare/fare.spec.ts`. Constants live in
-`apps/api/src/fare/fare.constants.ts`.
+| Trip | distance_m | distanceCharge | solo | 2 pooled (20 %) | 3 pooled (30 %) | 5+ pooled (50 %) |
+|---|---|---|---|---|---|---|
+| Nusrat: Banani → Mohakhali | 1 824 | 2 736 | **5 736** (57.36 BDT) | 5 189 (51.89) | **4 915** (49.15) | 4 368 (43.68) |
+| Rafiq: Banani → Gulshan 1 | 1 770 | 2 655 | **5 655** (56.55 BDT) | 5 124 (51.24) | **4 858** (48.58) | 4 327 (43.27) |
+| Shirin: Banani → Gulshan 2 | 785 | 1 178 | 4 178 (41.78 BDT) | 3 942 (39.42) | **3 825** (38.25) | 3 589 (35.89) |
 
-- The estimate (`GET /fare/estimate`, `estimated_fare_paisa`) is the solo fare, labelled "up to".
-- `final_fare_paisa` is written for every member in the transaction that moves the pool to `IN_PROGRESS`; membership
-  is frozen from then on, so the number is stable and the passenger sees it during the ride.
-- The discount counts requests, not seats; it is a flat 20 % for 2 or 3 members.
+Check Nusrat in a pool of three by hand: `1824 × 1500 / 1000 = 2736`; `3000 + 2736 = 5736`;
+`0.3 × 2736 = 820.8 → 821`; `5736 − 821 = 4915`. Rafiq shows the rounding: `0.3 × 2655 = 796.5 → 797`
+(`Math.round` rounds halves up). These numbers are tests in `apps/api/src/fare/fare.spec.ts` and the e2e suite.
+Constants live in `apps/api/src/fare/fare.constants.ts`.
+
+- The estimate endpoint (`GET /fare/estimate`) returns the solo fare, the 3-pooled fare and the capped fare, which the
+  request form shows side by side. `estimated_fare_paisa` on the row is the solo fare ("up to").
+- The status card's "if pooled" figure assumes the Tesla fills up once a driver accepts (Bullet: 3 requests, 30 %);
+  before that it shows the 2-request fare.
+- `final_fare_paisa` is written for every member in the transaction that moves the pool to `IN_PROGRESS`, using the
+  number of requests in the pool at that moment; membership is frozen from then on, so the number is stable and the
+  passenger sees it during the ride. If someone leaves before the start, everyone else's discount drops a tier.
+- The discount counts requests, not seats: one passenger booking 3 seats rides alone and pays 3 × solo.
 - **Money is integer paisa** (1 BDT = 100 paisa) end to end: exact arithmetic with no float rounding, trivial
   comparison, one unit across API, database and tests. `numeric` would also be exact, but Prisma returns `Decimal`
   objects that need a library at every boundary. The browser formats with `Intl.NumberFormat(locale, BDT)`.
 - **Payment:** cash, or a simulated TeslaPay wallet debited at completion with
   `UPDATE users SET wallet = wallet − fare WHERE id = $1 AND wallet ≥ fare`; 0 rows → `PENDING`, cash due to the
-  driver. Completion never blocks on payment. Shirin's 30.00 BDT wallet vs her 39.42 BDT fare shows it.
+  driver. Completion never blocks on payment. Shirin's 30.00 BDT wallet vs her 38.25 BDT fare shows it.
 
 ## 10. Tech stack
 
@@ -408,15 +417,15 @@ pnpm --filter web dev            # http://localhost:3000
 
 ```bash
 docker compose up -d db          # tests use the tesla_pool_test database in the same container
-pnpm --filter api test           # 84 unit tests: fare, transitions (every from/to pair), matching
-pnpm --filter api test:e2e       # 59 e2e tests over HTTP against real PostgreSQL, --runInBand
+pnpm --filter api test           # 94 unit tests: fare tiers, transitions (every from/to pair), matching, end zone
+pnpm --filter api test:e2e       # 60 e2e tests over HTTP against real PostgreSQL, --runInBand
 ```
 
 | PRD behaviour | Test file | What it asserts |
 |---|---|---|
 | Bullet's capacity can never be exceeded | `test/capacity.e2e-spec.ts` | Nusrat, Rafiq, Shirin fill Bullet; a fourth waits; 2 seats never fit in 1; raw `UPDATE … seats_taken = 4` is rejected by the CHECK |
 | Invalid state transitions are rejected | `test/transitions.e2e-spec.ts`, `src/pools/transitions.spec.ts` | start from OPEN, complete from DRIVER_ARRIVED, double arrive, cancel in progress → 409 with from/to; happy-path cascade |
-| Nusrat's and Rafiq's pooled fares | `src/fare/fare.spec.ts`, `test/fare.e2e-spec.ts`, `test/fare-settlement.e2e-spec.ts` | 5736/5189 and 5655/5124; each sees only their own; solo pool gets no discount; wallet 50000 → 44811; Shirin PENDING |
+| Nusrat's and Rafiq's pooled fares | `src/fare/fare.spec.ts`, `test/fare.e2e-spec.ts`, `test/fare-settlement.e2e-spec.ts` | every tier (20/30/40/50 % cap); 5736/5189 and 5655/5124 for two; 4915/4858/3825 for three; each sees only their own; solo gets no discount; wallet 50000 → 45085; Shirin PENDING |
 | Users can't modify another user's ride | `test/ownership.e2e-spec.ts` | Rafiq → Nusrat's ride 403; Kamal → Jashim's pool 403; role guard; no token 401; smuggled `status` 400 |
 | Cancellation rules hold | `test/cancellation.e2e-spec.ts` | seat freed on leave; last member leaving auto-cancels as SYSTEM; driver cancel reverts both to REQUESTED and Kamal sweeps them; no cancel after start |
 | Two concurrent requests can't corrupt capacity | `test/capacity-race.e2e-spec.ts` | five racers for Bullet's last seat via `Promise.all`: all 201, exactly one joins, `seats_taken = 3`, four wait; two drivers sweeping one zone at once |
@@ -466,7 +475,7 @@ REST + JSON, base path `/api/v1` (`/health` unprefixed), Bearer JWT, Swagger UI 
 |---|---|---|---|
 | GET | `/health` | public | `{status, db, version}`; 503 if the database is down |
 | GET | `/zones` | public | the 12 zones |
-| GET | `/fare/estimate?pickupZoneId&dropoffZoneId&seats` | public | solo and pooled quote with breakdown |
+| GET | `/fare/estimate?pickupZoneId&dropoffZoneId&seats` | public | solo, 3-pooled and capped quote with breakdown |
 | POST | `/auth/signup`, `/auth/login` | public | `{ token, user }`; drivers send `vehicle: { name, capacity }`; 10/min |
 | GET | `/auth/me` | any | profile, wallet, vehicle (role re-read from the database) |
 | POST | `/rides` | passenger | creates and tries to auto-join; `201` with `pool` or `null` |
@@ -474,7 +483,7 @@ REST + JSON, base path `/api/v1` (`/health` unprefixed), Bearer JWT, Swagger UI 
 | POST | `/rides/:id/cancel` | passenger | `REQUESTED` / `MATCHED` / `DRIVER_ARRIVED` only |
 | PATCH | `/driver/status` | driver | `{ online }` |
 | PATCH | `/driver/zone` | driver | `{ pickupZoneId }`: the zone served; set automatically to the last drop-off on completion |
-| GET | `/driver/requests?pickupZoneId` | driver | waiting requests in a zone, oldest first |
+| GET | `/driver/requests?pickupZoneId[&dropoffZoneId]` | driver | waiting requests in a zone, oldest first, optionally to one destination |
 | POST | `/driver/pools` | driver | `{ requestId }`: create pool + sweep |
 | GET | `/driver/pools`, `/driver/pools/active`, `/driver/pools/:id` | driver | history, active, manifest with events |
 | POST | `/driver/pools/:id/arrive` · `start` · `complete` · `cancel` | driver | state machine commands |
@@ -532,7 +541,10 @@ second client (mobile, partners) with materially different data needs.
 4. **A passenger's timeline shows pool events only while they were a member** (from `RIDE_MATCHED` to
    `RIDE_UNMATCHED`/`RIDE_CANCELLED`), so it never shows a pool's history from before they joined or after they left.
 5. **The optional wallet top-up endpoint was skipped**: seed balances cover the demo.
-6. **`WEB_PORT`** was added to compose because port 3000 was taken on the development machine; CORS follows it.
+6. **The pool discount is tiered** (20 % for 2 requests, rising 10 points per request to a 50 % cap) instead of a
+   flat 20 %: a fuller Tesla should be cheaper per rider, which is the behaviour pooling is meant to encourage.
+7. **Drivers can filter waiting requests by destination** (`dropoffZoneId`), to pick riders going their way.
+8. **`WEB_PORT`** was added to compose because port 3000 was taken on the development machine; CORS follows it.
 
 ## 22. Concurrency
 
@@ -569,8 +581,8 @@ read replicas or a cache first, and to SSE. Details: [docs/scaling.md](docs/scal
 
 1. A driver serves one pickup zone at a time and selects it on the dashboard; drivers have no GPS position.
 2. Destination compatibility is "within 3 km of every existing member's destination", direction-agnostic.
-3. Fare constants: 30 BDT base, 15 BDT/km, 20 % pool discount on the distance charge when at least two requests share
-   the vehicle at start.
+3. Fare constants: 30 BDT base, 15 BDT/km; the pool discount on the distance charge is 20 % for 2 requests, 30 % for 3,
+   40 % for 4 and 50 % for 5 or more, counted when the trip starts.
 4. Fares lock when the trip starts; membership is frozen from that point.
 5. Passengers and drivers may cancel until the trip starts; cancelling a pool returns its passengers to the queue.
 6. TeslaPay is a prepaid wallet; an insufficient balance falls back to cash due and never blocks completion.
@@ -596,7 +608,7 @@ read replicas or a cache first, and to SSE. Details: [docs/scaling.md](docs/scal
 
 ## 25. Next improvements
 
-Server-Sent Events for status; tiered pool discount (2 vs 3 members); per-passenger dropoff order and ETA; ratings;
+Server-Sent Events for status; per-passenger dropoff order and ETA; ratings;
 refresh tokens and httpOnly cookies behind one origin; cancellation fee after `DRIVER_ARRIVED`; wallet top-up and a
 `payments` table once refunds exist; route-corridor matching with PostGIS; a slimmer API image.
 
@@ -679,7 +691,7 @@ Next.js middleware for route protection (cannot read a localStorage token).
 
 ## 28. Demo video
 
-_Pending: to be recorded (OBS, ≤ 6 minutes) and linked here and at the top._
+_Pending: to be recorded (OBS, ≤ 6 minutes) and linked here and at the top. Script: [docs/video-script.md](docs/video-script.md)._
 Planned chapters: 0:00 problem and users · 1:00 architecture, database, lifecycle, key decision (conditional UPDATE),
 trade-off (polling) · 3:00 passenger flow · 4:00 driver flow and pooling · 5:00 edge case (Shirin's short wallet,
 fourth passenger waits) · 5:40 deployment and git history.
