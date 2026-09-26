@@ -1,5 +1,5 @@
 import { Pool, RideEvent, RideRequest, User, Zone } from '@prisma/client';
-import { finalFare, quote } from '../fare/fare';
+import { finalFare } from '../fare/fare';
 import { zoneView } from '../zones/zones.service';
 import { endZone } from './matching';
 
@@ -31,7 +31,7 @@ export const poolDetailView = (
     // Before start: the fare they would pay if the pool started now.
     farePaisa:
       m.finalFarePaisa ??
-      finalFare(quote(m.distanceM, m.seats), p.members.length),
+      finalFare(m.distanceM, m.seats, p.members.length),
     fareIsFinal: m.finalFarePaisa !== null,
     paymentMethod: m.paymentMethod,
     paymentStatus: m.paymentStatus,

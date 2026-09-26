@@ -2,7 +2,7 @@ import { Injectable, Logger } from '@nestjs/common';
 import { Pool, PoolStatus, RideRequest } from '@prisma/client';
 import { DomainError } from '../common/errors';
 import { EventsService } from '../events/events.service';
-import { finalFare, quote } from '../fare/fare';
+import { finalFare } from '../fare/fare';
 import { PageQueryDto } from '../rides/rides.dto';
 import { PrismaService, Tx } from '../prisma/prisma.service';
 import { zoneView } from '../zones/zones.service';
@@ -32,7 +32,7 @@ export class PoolsService {
   constructor(
     private readonly prisma: PrismaService,
     private readonly events: EventsService,
-  ) {}
+  ) { }
 
   async setOnline(driverId: string, online: boolean) {
     const driver = await this.prisma.user.findUniqueOrThrow({
@@ -67,10 +67,25 @@ export class PoolsService {
   }
 
   // "Relevant requests": waiting rides in the zone the driver chose, oldest first.
-  async openRequests(driverId: string, pickupZoneId: number) {
+  async openRequests(
+    driverId: string,
+    pickupZoneId: number,
+    dropoffZoneId?: number,
+  ) {
     await this.assertOnline(driverId);
+    const where: {
+      pickupZoneId: number;
+      status: 'REQUESTED';
+      dropoffZoneId?: number;
+    } = {
+      pickupZoneId,
+      status: 'REQUESTED',
+    };
+    if (dropoffZoneId) {
+      where.dropoffZoneId = dropoffZoneId;
+    }
     const rides = await this.prisma.rideRequest.findMany({
-      where: { pickupZoneId, status: 'REQUESTED' },
+      where,
       include: { passenger: true, pickupZone: true, dropoffZone: true },
       orderBy: { createdAt: 'asc' },
     });
@@ -186,7 +201,7 @@ export class PoolsService {
   // never lock rows we will not take, so the other sweep can still fill its seats.
   private async sweep(tx: Tx, pool: Pool) {
     const tried: string[] = [];
-    for (;;) {
+    for (; ;) {
       const { seatsTaken } = await tx.pool.findUniqueOrThrow({
         where: { id: pool.id },
       });
@@ -270,7 +285,7 @@ export class PoolsService {
         orderBy: { createdAt: 'asc' },
       });
       for (const m of members) {
-        const fare = finalFare(quote(m.distanceM, m.seats), members.length);
+        const fare = finalFare(m.distanceM, m.seats, members.length);
         await this.cascade(tx, m.id, 'DRIVER_ARRIVED', {
           status: 'IN_PROGRESS',
           finalFarePaisa: fare,
@@ -413,16 +428,16 @@ export class PoolsService {
     });
     return debit.count === 1
       ? {
-          status: 'PAID' as const,
-          walletBefore: after + fare,
-          walletAfter: after,
-        }
+        status: 'PAID' as const,
+        walletBefore: after + fare,
+        walletAfter: after,
+      }
       : {
-          status: 'PENDING' as const,
-          walletBefore: after,
-          walletAfter: after,
-          cashDue: true,
-        };
+        status: 'PENDING' as const,
+        walletBefore: after,
+        walletAfter: after,
+        cashDue: true,
+      };
   }
 
   private async command(

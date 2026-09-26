@@ -4,8 +4,13 @@ import type { OpenRequest, PoolDetail, PoolSummary } from './types';
 
 export const setOnline = (online: boolean) =>
   api<{ isOnline: boolean }>('/driver/status', { method: 'PATCH', body: { online } });
-export const getOpenRequests = (pickupZoneId: number) =>
-  api<OpenRequest[]>('/driver/requests', { query: { pickupZoneId } });
+export const getOpenRequests = (pickupZoneId: number, dropoffZoneId?: number) =>
+  api<OpenRequest[]>('/driver/requests', {
+    query: {
+      pickupZoneId,
+      ...(dropoffZoneId ? { dropoffZoneId } : {}),
+    },
+  });
 export const acceptRequest = (requestId: string) =>
   api<PoolDetail>('/driver/pools', { method: 'POST', body: { requestId } });
 export const getActivePool = () => api<PoolDetail | null>('/driver/pools/active');
