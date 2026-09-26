@@ -68,7 +68,8 @@ describe("Nusrat's and Rafiq's pooled fares calculate correctly", () => {
     ).toBe(5736);
   });
 
-  it('settles: Nusrat TeslaPay PAID (50000 -> 44811), Rafiq cash PAID, Shirin short -> PENDING', async () => {
+  // Three requests share Bullet, so the tiered discount is 30 % of the distance charge.
+  it('settles: Nusrat TeslaPay PAID (50000 -> 45085), Rafiq cash PAID, Shirin short -> PENDING', async () => {
     const n = (
       await requestRide(app, nusrat, {
         to: 'Mohakhali',
@@ -91,19 +92,19 @@ describe("Nusrat's and Rafiq's pooled fares calculate correctly", () => {
     expect(done.body.members.map((m: object) => m)).toEqual([
       expect.objectContaining({
         passengerName: 'Nusrat Jahan',
-        farePaisa: 5189,
+        farePaisa: 4915,
         paymentMethod: 'TESLAPAY',
         paymentStatus: 'PAID',
       }),
       expect.objectContaining({
         passengerName: 'Rafiq Ahmed',
-        farePaisa: 5124,
+        farePaisa: 4858,
         paymentMethod: 'CASH',
         paymentStatus: 'PAID',
       }),
       expect.objectContaining({
         passengerName: 'Shirin Akter',
-        farePaisa: 3942,
+        farePaisa: 3825, // still more than her 3000 wallet
         paymentMethod: 'TESLAPAY',
         paymentStatus: 'PENDING',
       }),
@@ -129,7 +130,7 @@ describe("Nusrat's and Rafiq's pooled fares calculate correctly", () => {
     const wallet = async (a: Actor) =>
       (await api(app).get('/api/v1/auth/me').set(auth(a.token))).body
         .walletBalancePaisa;
-    expect(await wallet(nusrat)).toBe(44811);
+    expect(await wallet(nusrat)).toBe(45085);
     expect(await wallet(shirin)).toBe(3000);
 
     const sv = await getRide(app, shirin, s.id).expect(200);

@@ -9,8 +9,13 @@ export const setServingZone = (pickupZoneId: number) =>
     method: 'PATCH',
     body: { pickupZoneId },
   });
-export const getOpenRequests = (pickupZoneId: number) =>
-  api<OpenRequest[]>('/driver/requests', { query: { pickupZoneId } });
+export const getOpenRequests = (pickupZoneId: number, dropoffZoneId?: number) =>
+  api<OpenRequest[]>('/driver/requests', {
+    query: {
+      pickupZoneId,
+      ...(dropoffZoneId ? { dropoffZoneId } : {}),
+    },
+  });
 export const acceptRequest = (requestId: string) =>
   api<PoolDetail>('/driver/pools', { method: 'POST', body: { requestId } });
 export const getActivePool = () => api<PoolDetail | null>('/driver/pools/active');

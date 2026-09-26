@@ -20,15 +20,20 @@ export class ZonesController {
       q.dropoffZoneId,
       q.seats,
     );
+    const discount3 = Math.round(0.3 * quote.distanceCharge);
+    const discountMax = Math.round(0.5 * quote.distanceCharge);
     return {
       distanceM,
       seats: q.seats,
       soloFarePaisa: quote.solo,
-      pooledFarePaisa: quote.pooled,
+      pooled3FarePaisa: quote.pooled3, // 3 requests = 30 % off distance charge
+      pooledMaxFarePaisa: quote.pooledMax, // 5+ requests = 50 % off (max discount)
       breakdown: {
         baseFarePaisa: quote.baseFare,
         distanceChargePaisa: quote.distanceCharge,
-        poolDiscountPaisa: quote.poolDiscount,
+        // Show the 3-pool discount as the "standard" preview breakdown
+        poolDiscount3Paisa: discount3,
+        poolDiscountMaxPaisa: discountMax,
       },
     };
   }
