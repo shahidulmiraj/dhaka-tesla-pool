@@ -59,10 +59,17 @@ describe('driver availability and open requests', () => {
 
     const filtered = await api(app)
       .get('/api/v1/driver/requests')
-      .query({ pickupZoneId: zoneId('Banani'), dropoffZoneId: zoneId('Mohakhali') })
+      .query({
+        pickupZoneId: zoneId('Banani'),
+        dropoffZoneId: zoneId('Mohakhali'),
+      })
       .set(auth(jashim.token))
       .expect(200);
-    expect(filtered.body.map((r: { passengerFirstName: string }) => r.passengerFirstName)).toEqual(['Nusrat']);
+    expect(
+      filtered.body.map(
+        (r: { passengerFirstName: string }) => r.passengerFirstName,
+      ),
+    ).toEqual(['Nusrat']);
   });
 
   it('cannot go offline with an active pool, and cannot accept a second pool', async () => {

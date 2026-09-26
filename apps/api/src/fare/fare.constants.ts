@@ -12,4 +12,3 @@ export const POOL_DISCOUNT_BY_MEMBERS: Record<number, number> = {
   5: 0.5,
 };
 export const MAX_POOL_DISCOUNT = 0.5;
-

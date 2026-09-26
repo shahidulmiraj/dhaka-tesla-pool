@@ -53,11 +53,14 @@ describe('quote', () => {
 });
 
 describe('finalFare (tiered by member request count)', () => {
-  it('1 member  → solo (no discount)', () => expect(finalFare(1824, 1, 1)).toBe(5736));
-  it('2 members → 20% off distance charge', () => expect(finalFare(1824, 1, 2)).toBe(5189));
+  it('1 member  → solo (no discount)', () =>
+    expect(finalFare(1824, 1, 1)).toBe(5736));
+  it('2 members → 20% off distance charge', () =>
+    expect(finalFare(1824, 1, 2)).toBe(5189));
   it('3 members → 30% off', () => expect(finalFare(1824, 1, 3)).toBe(4915));
   it('4 members → 40% off', () => expect(finalFare(1824, 1, 4)).toBe(4642));
-  it('5 members → 50% off (cap)', () => expect(finalFare(1824, 1, 5)).toBe(4368));
-  it('6 members → still 50% off (cap)', () => expect(finalFare(1824, 1, 6)).toBe(4368));
+  it('5 members → 50% off (cap)', () =>
+    expect(finalFare(1824, 1, 5)).toBe(4368));
+  it('6 members → still 50% off (cap)', () =>
+    expect(finalFare(1824, 1, 6)).toBe(4368));
 });
-

@@ -1,5 +1,5 @@
 import { Pool, RideEvent, RideRequest, User, Zone } from '@prisma/client';
-import { pooledForMembers, quote } from '../fare/fare';
+import { pooledForMembers } from '../fare/fare';
 
 type RideRow = RideRequest & {
   pickupZone: Zone;
@@ -55,7 +55,6 @@ export const rideDetailView = (
     updatedAt: r.updatedAt,
   };
 };
-
 
 export const rideSummaryView = (
   r: RideRequest & { pickupZone: Zone; dropoffZone: Zone },
