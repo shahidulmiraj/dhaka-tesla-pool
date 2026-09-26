@@ -173,7 +173,7 @@ erDiagram
 
 | Table | Why it exists |
 |---|---|
-| `users` | Both roles, one identity: `role`, bcrypt `password_hash`, TeslaPay `wallet_balance_paisa` (CHECK ≥ 0), driver `is_online` |
+| `users` | Both roles, one identity: `role`, bcrypt `password_hash`, TeslaPay `wallet_balance_paisa` (CHECK ≥ 0), driver `is_online` and `serving_zone_id` |
 | `vehicles` | Bullet as an entity: `name`, fixed `capacity` (CHECK 1..6); one per driver (`driver_id` unique) |
 | `zones` | The predefined Dhaka areas with `numeric(9,6)` lat/lng so hand calculations match exactly; never deleted (FK RESTRICT) |
 | `ride_requests` | The passenger's side: seats, `distance_m` (stored at creation), status, `pool_id` (membership), payment, estimated and final fare |
@@ -473,6 +473,7 @@ REST + JSON, base path `/api/v1` (`/health` unprefixed), Bearer JWT, Swagger UI 
 | GET | `/rides`, `/rides/active`, `/rides/:id` | passenger | history, active (`204` if none), detail with own timeline |
 | POST | `/rides/:id/cancel` | passenger | `REQUESTED` / `MATCHED` / `DRIVER_ARRIVED` only |
 | PATCH | `/driver/status` | driver | `{ online }` |
+| PATCH | `/driver/zone` | driver | `{ pickupZoneId }`: the zone served; set automatically to the last drop-off on completion |
 | GET | `/driver/requests?pickupZoneId` | driver | waiting requests in a zone, oldest first |
 | POST | `/driver/pools` | driver | `{ requestId }`: create pool + sweep |
 | GET | `/driver/pools`, `/driver/pools/active`, `/driver/pools/:id` | driver | history, active, manifest with events |
@@ -577,8 +578,8 @@ read replicas or a cache first, and to SSE. Details: [docs/scaling.md](docs/scal
 8. One vehicle per driver, one active request per passenger, one active pool per driver.
 9. No ratings, cancellation fees or per-passenger dropoff ordering in the MVP.
 10. When a trip completes, the driver is where the last passenger got off. With no drop-off order in the MVP, the last
-    stop is the drop-off farthest from the pickup (`endZone` on the pool), and the driver's serving zone switches to it
-    (they can change it back).
+    stop is the drop-off farthest from the pickup (`endZone` on the pool). The completion transaction stores it as the
+    driver's serving zone (`users.serving_zone_id`), so every device shows it; the driver can change it back.
 11. A request asking for more seats than any vehicle has waits forever; a driver accepting it gets
     `409 SEATS_EXCEED_CAPACITY`.
 
