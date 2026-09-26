@@ -105,4 +105,30 @@ describe('driver availability and open requests', () => {
       .set(auth(jashim.token))
       .expect(204);
   });
+
+  it('sets the serving zone and returns it from /auth/me; unknown zones are rejected', async () => {
+    const res = await api(app)
+      .patch('/api/v1/driver/zone')
+      .set(auth(jashim.token))
+      .send({ pickupZoneId: zoneId('Gulshan 2') })
+      .expect(200);
+    expect(res.body).toEqual({
+      servingZone: { id: zoneId('Gulshan 2'), name: 'Gulshan 2' },
+    });
+    const me = await api(app)
+      .get('/api/v1/auth/me')
+      .set(auth(jashim.token))
+      .expect(200);
+    expect(me.body.servingZone.name).toBe('Gulshan 2');
+    await api(app)
+      .patch('/api/v1/driver/zone')
+      .set(auth(jashim.token))
+      .send({ pickupZoneId: 9999 })
+      .expect(400);
+    await api(app)
+      .patch('/api/v1/driver/zone')
+      .set(auth(nusrat.token))
+      .send({ pickupZoneId: zoneId('Banani') })
+      .expect(403);
+  });
 });

@@ -8,6 +8,8 @@ export interface Me {
   walletBalancePaisa: number;
   isOnline: boolean;
   vehicle: { id: string; name: string; capacity: number } | null;
+  /** Drivers: zone they pick up from; moves to the last drop-off after each trip. */
+  servingZone: { id: number; name: string } | null;
 }
 
 export interface Session {
