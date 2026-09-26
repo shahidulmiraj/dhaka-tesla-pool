@@ -32,7 +32,7 @@ export class PoolsService {
   constructor(
     private readonly prisma: PrismaService,
     private readonly events: EventsService,
-  ) { }
+  ) {}
 
   async setOnline(driverId: string, online: boolean) {
     const driver = await this.prisma.user.findUniqueOrThrow({
@@ -215,7 +215,7 @@ export class PoolsService {
   // never lock rows we will not take, so the other sweep can still fill its seats.
   private async sweep(tx: Tx, pool: Pool) {
     const tried: string[] = [];
-    for (; ;) {
+    for (;;) {
       const { seatsTaken } = await tx.pool.findUniqueOrThrow({
         where: { id: pool.id },
       });
@@ -459,16 +459,16 @@ export class PoolsService {
     });
     return debit.count === 1
       ? {
-        status: 'PAID' as const,
-        walletBefore: after + fare,
-        walletAfter: after,
-      }
+          status: 'PAID' as const,
+          walletBefore: after + fare,
+          walletAfter: after,
+        }
       : {
-        status: 'PENDING' as const,
-        walletBefore: after,
-        walletAfter: after,
-        cashDue: true,
-      };
+          status: 'PENDING' as const,
+          walletBefore: after,
+          walletAfter: after,
+          cashDue: true,
+        };
   }
 
   private async command(

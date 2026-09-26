@@ -26,7 +26,7 @@ export class ZonesController {
       distanceM,
       seats: q.seats,
       soloFarePaisa: quote.solo,
-      pooled3FarePaisa: quote.pooled3,   // 3 requests = 30 % off distance charge
+      pooled3FarePaisa: quote.pooled3, // 3 requests = 30 % off distance charge
       pooledMaxFarePaisa: quote.pooledMax, // 5+ requests = 50 % off (max discount)
       breakdown: {
         baseFarePaisa: quote.baseFare,

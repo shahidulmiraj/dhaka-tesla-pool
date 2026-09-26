@@ -1,7 +1,6 @@
 import { Prisma, PrismaClient } from '@prisma/client';
 import * as bcrypt from 'bcryptjs';
 
-
 // Idempotent: runs on every container boot. Upserts keyed by email / zone name /
 // fixed UUIDs, and `update: {}` so a reboot never resets balances or history.
 

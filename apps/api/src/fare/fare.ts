@@ -75,7 +75,12 @@ export function quote(distanceM: number, seats: number): Quote {
     solo: perSeatSolo * seats,
     pooled2: fareAtRate(BASE_FARE_PAISA, distanceCharge, seats, 0.2),
     pooled3: fareAtRate(BASE_FARE_PAISA, distanceCharge, seats, 0.3),
-    pooledMax: fareAtRate(BASE_FARE_PAISA, distanceCharge, seats, MAX_POOL_DISCOUNT),
+    pooledMax: fareAtRate(
+      BASE_FARE_PAISA,
+      distanceCharge,
+      seats,
+      MAX_POOL_DISCOUNT,
+    ),
   };
 }
 
@@ -103,7 +108,10 @@ export function pooledForMembers(
  * ride-request rows sharing this pool (not the number of seats).
  * Discount counts member requests, not seats.
  */
-export function finalFare(distanceM: number, seats: number, memberRequests: number): number {
+export function finalFare(
+  distanceM: number,
+  seats: number,
+  memberRequests: number,
+): number {
   return pooledForMembers(distanceM, seats, memberRequests);
 }
-

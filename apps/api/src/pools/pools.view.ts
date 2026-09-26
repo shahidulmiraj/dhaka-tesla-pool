@@ -30,8 +30,7 @@ export const poolDetailView = (
     status: m.status,
     // Before start: the fare they would pay if the pool started now.
     farePaisa:
-      m.finalFarePaisa ??
-      finalFare(m.distanceM, m.seats, p.members.length),
+      m.finalFarePaisa ?? finalFare(m.distanceM, m.seats, p.members.length),
     fareIsFinal: m.finalFarePaisa !== null,
     paymentMethod: m.paymentMethod,
     paymentStatus: m.paymentStatus,
