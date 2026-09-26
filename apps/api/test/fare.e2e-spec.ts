@@ -24,7 +24,8 @@ describe('fare estimate (public)', () => {
     });
   });
 
-  it("quotes Nusrat's Banani -> Mohakhali at 57.36 solo, 51.89 pooled", async () => {
+  // Tiered discount on the distance charge: 3 requests = 30 %, 5+ = 50 % (cap).
+  it("quotes Nusrat's Banani -> Mohakhali at 57.36 solo, 49.15 in a pool of 3, 43.68 at most", async () => {
     const res = await api(app)
       .get('/api/v1/fare/estimate')
       .query({ pickupZoneId: banani, dropoffZoneId: mohakhali, seats: 1 })
@@ -33,16 +34,18 @@ describe('fare estimate (public)', () => {
       distanceM: 1824,
       seats: 1,
       soloFarePaisa: 5736,
-      pooledFarePaisa: 5189,
+      pooled3FarePaisa: 4915, // 5736 - round(0.3 x 2736) = 5736 - 821
+      pooledMaxFarePaisa: 4368, // 5736 - round(0.5 x 2736) = 5736 - 1368
       breakdown: {
         baseFarePaisa: 3000,
         distanceChargePaisa: 2736,
-        poolDiscountPaisa: 547,
+        poolDiscount3Paisa: 821,
+        poolDiscountMaxPaisa: 1368,
       },
     });
   });
 
-  it("quotes Rafiq's Banani -> Gulshan 1 at 56.55 solo, 51.24 pooled", async () => {
+  it("quotes Rafiq's Banani -> Gulshan 1 at 56.55 solo, 48.58 in a pool of 3", async () => {
     const res = await api(app)
       .get('/api/v1/fare/estimate')
       .query({ pickupZoneId: banani, dropoffZoneId: gulshan1, seats: 1 })
@@ -50,7 +53,8 @@ describe('fare estimate (public)', () => {
     expect(res.body).toMatchObject({
       distanceM: 1770,
       soloFarePaisa: 5655,
-      pooledFarePaisa: 5124,
+      pooled3FarePaisa: 4858, // 5655 - round(0.3 x 2655 = 796.5) = 5655 - 797
+      pooledMaxFarePaisa: 4327, // 5655 - round(0.5 x 2655 = 1327.5) = 5655 - 1328
     });
   });
 
