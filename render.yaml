@@ -7,7 +7,7 @@ services:
     plan: free
     dockerfilePath: ./apps/api/Dockerfile
     dockerContext: .
-    branch: pre-release # switch to release/v1.0.0 after the release cut
+    branch: release/v1.0.0 # the tagged version shown in the video
     healthCheckPath: /health
     envVars:
       - key: DATABASE_URL # Neon pooled connection string

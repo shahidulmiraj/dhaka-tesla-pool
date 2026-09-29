@@ -2,10 +2,13 @@
 
 > Share a seat. Split the fare. Survive Dhaka traffic.
 
-**Live app:** _pending deployment (see [Deployment](#19-deployment))_ · **API health:** _pending_ · **Demo video:** _pending_ · **Swagger:** `http://localhost:3001/docs` locally
+**[Live app](https://dhaka-tesla-pool-fawn.vercel.app)** · **[API health](https://dhaka-tesla-pool-api-00a1.onrender.com/health)** · **[Demo video](https://youtu.be/TCuc7O7RSZo)** · **[Swagger](https://dhaka-tesla-pool-api-00a1.onrender.com/docs)**
 
-> ⚠️ **Cold start:** once deployed, the API runs on Render's free tier and sleeps after 15 minutes idle. The first
-> request can take up to ~60 s. Open `/health` first and wait for `{"status":"ok"}`; the web app shows a
+Demo accounts (password `Dhaka2026!`): `nusrat@teslapool.demo`, `rafiq@teslapool.demo`, `shirin@teslapool.demo`
+(passengers), `jashim@teslapool.demo` (driver). The login page has one-click buttons for them.
+
+> ⚠️ **Cold start:** the API runs on Render's free tier and sleeps after 15 minutes idle. The first request can take
+> up to ~60 s. Open [https://dhaka-tesla-pool-api-00a1.onrender.com/health](https://dhaka-tesla-pool-api-00a1.onrender.com/health) first and wait for `{"status":"ok"}`; the web app shows a
 > "Waking up the API" banner meanwhile.
 
 ## 1. Summary
@@ -450,8 +453,19 @@ The login page has one-click buttons that fill these in.
 
 ## 19. Deployment
 
-**Status: not deployed yet.** Everything needed is in the repo; the accounts (Neon, Render, Vercel, all free tier) have
-to be created by the repository owner. Until then, `docker compose up` is the reproducible deployment.
+**Live, all on free tiers:**
+
+| Part | Where | URL |
+|---|---|---|
+| Web (Next.js) | Vercel | <https://dhaka-tesla-pool-fawn.vercel.app> |
+| API (NestJS, Docker) | Render | <https://dhaka-tesla-pool-api-00a1.onrender.com> · health `/health` · Swagger `/docs` |
+| Database (PostgreSQL) | Neon | pooled URL for the app, direct URL for migrations |
+
+Verified on the live deployment: `/health` returns `{"status":"ok","db":"up"}`, the API's CORS allows only the Vercel
+origin, and the seeded passenger and driver accounts sign in and land on their dashboards. The API image is the same
+Dockerfile as `docker compose`; on every boot it runs `prisma migrate deploy` and the idempotent seed.
+
+How it was set up (to reproduce on your own accounts):
 
 1. **Neon** (Postgres): create project `dhaka-tesla-pool`, database `tesla_pool`. Copy the **pooled** connection
    string to `DATABASE_URL` and the **direct** one to `DIRECT_URL` (append `&connect_timeout=15` to both so the first
@@ -460,8 +474,8 @@ to be created by the repository owner. Until then, `docker compose up` is the re
    `apps/api/Dockerfile` with health check `/health`. Fill in `DATABASE_URL`, `DIRECT_URL`, and later `CORS_ORIGIN`.
    The container runs `migrate deploy` and the seed on boot. Do not set `PORT`; Render injects it.
 3. **Vercel** (web): import the repo, Root Directory `apps/web`, env `NEXT_PUBLIC_API_URL=https://<api>.onrender.com`,
-   production branch `pre-release` (then `release/v1.0.0`). Then set Render's `CORS_ORIGIN` to the Vercel URL and
-   redeploy both (the API URL is baked into the web build).
+   production branch `release/v1.0.0` (was `pre-release` before the release cut). Then set Render's `CORS_ORIGIN` to
+   the Vercel URL and redeploy both (the API URL is baked into the web build).
 
 Free-tier facts: Render sleeps after 15 minutes idle (~1 minute to wake; hence the banner); Neon autosuspends after 5
 minutes (~1 s on the next query). Render's own free Postgres expires after 30 days, which is why the database is on
@@ -603,7 +617,7 @@ read replicas or a cache first, and to SSE. Details: [docs/scaling.md](docs/scal
 - JWT in `localStorage` (XSS-readable) with a 24 h expiry and no revocation.
 - Status updates are polled (up to 4 s delay).
 - No frontend unit tests.
-- Free-tier cold start of up to ~60 s once deployed.
+- Free-tier cold start: the live API can take up to ~60 s to answer after 15 idle minutes.
 - The API image is ~720 MB (Prisma engines and full production dependencies); not optimised.
 
 ## 25. Next improvements
@@ -691,7 +705,8 @@ Next.js middleware for route protection (cannot read a localStorage token).
 
 ## 28. Demo video
 
-_Pending: to be recorded (OBS, ≤ 6 minutes) and linked here and at the top. Script: [docs/video-script.md](docs/video-script.md)._
-Planned chapters: 0:00 problem and users · 1:00 architecture, database, lifecycle, key decision (conditional UPDATE),
-trade-off (polling) · 3:00 passenger flow · 4:00 driver flow and pooling · 5:00 edge case (Shirin's short wallet,
-fourth passenger waits) · 5:40 deployment and git history.
+**[Watch on YouTube](https://youtu.be/TCuc7O7RSZo)**. Script and timings: [docs/video-script.md](docs/video-script.md).
+
+Chapters: 0:00 problem and users · 1:00 architecture, database, lifecycle, key decision (conditional UPDATE),
+trade-off (polling) · 3:00 passenger flow · 4:00 driver flow and pooling · 5:00 edge case (Shirin's short wallet) ·
+deployment and git history.

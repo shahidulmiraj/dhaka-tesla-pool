@@ -101,7 +101,7 @@ About 800 spoken words; timings leave ~10 s of slack.
 **Show:** `docker compose ps`, then the GitHub network graph.
 
 > One `docker compose up`: three healthy containers, and the database migrates and seeds itself on boot.
-> *(If deployed: "and it's live on Vercel, Render and Neon, all free tiers.")* The history shows feature branches
+> It's live on Vercel, Render and Neon, all free tiers: dhaka-tesla-pool-fawn.vercel.app. The history shows feature branches
 > merged into master, a pre-release branch for release fixes, and a tagged release. Thanks for watching.
 
 ## If you run long
